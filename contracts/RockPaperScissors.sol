@@ -288,7 +288,7 @@ contract RockPaperScissors is Killable{
         whenAlive
         returns (bytes32)
     {
-        return keccak256(abi.encodePacked(code, move, address(this)));
+        return keccak256(abi.encodePacked(code, move, address(this), msg.sender));
     }
 
     function transferOwnership(address newOwner)
