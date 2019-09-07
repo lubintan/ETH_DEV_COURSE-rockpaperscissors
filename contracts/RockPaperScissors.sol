@@ -26,6 +26,15 @@ contract RockPaperScissors is Killable{
     address owner;
 
     // Remember to add in LogEvents.
+    event LogDeposit(address indexed sender, uint256 indexed amount);
+    event LogWithdraw(address indexed sender, uint256 indexed amount);
+    event LogEnrol(address indexed sender, uint256 indexed bet, bytes32 indexed entryHash);
+    event LogPlay(address indexed sender, uint8 indexed move);
+    event LogCancel_NoOpponent(address indexed sender);
+    event LogCancel_NoPlay(address indexed sender);
+    event LogCancel_Override(address indexed sender);
+    event LogTransferOwnership(address indexed owner, address indexed newOwner);
+    event LogKilledWithdrawal(address indexed sender, uint256 indexed amount);
 
 
     using SafeMath for uint256;
@@ -51,6 +60,7 @@ contract RockPaperScissors is Killable{
         require(msg.sender != address(0), 'Sender Error');
         require(msg.value != 0, 'No deposit value.');
 
+        emit LogDeposit(msg.sender, msg.value);
         balances[msg.sender] = balances[msg.sender].add(msg.value);
     }
 
@@ -73,7 +83,7 @@ contract RockPaperScissors is Killable{
         uint256 currentBalance = balances[msg.sender];
         require(currentBalance >= withdrawAmount, "Not enough funds.");
         balances[msg.sender] = currentBalance.sub(withdrawAmount);
-// 		emit LogWithdraw(msg.sender, withdrawAmount);
+		emit LogWithdraw(msg.sender, withdrawAmount);
         msg.sender.transfer(withdrawAmount);
     }
 
@@ -116,7 +126,7 @@ contract RockPaperScissors is Killable{
             playDeadline = now.add(playPeriod);
         }
 
-        //Log
+        emit LogEnrol(msg.sender, bet, entryHash);
 
         usedHashes[entryHash] = true;
     }
@@ -140,14 +150,13 @@ contract RockPaperScissors is Killable{
             require(hashIt(code, move) == player2.entryHash, 'Unverified move.');
             require(player2.move == 0, 'Cannot re-play move.');
 
-
             player2.move = move;
 
         } else {
             revert('Unknown player.');
         }
 
-        //Log
+        emit LogPlay(msg.sender, move);
 
         if ((player1.move != 0) && (player2.move != 0)){
             evaluate();
@@ -216,7 +225,7 @@ contract RockPaperScissors is Killable{
         player1.entryHash = 0;
         player1.move = 0;
         enrolDeadline = 0;
-        //Log
+        emit LogCancel_NoOpponent(msg.sender);
         balances[player1.sender] = balances[player1.sender].add(betValue);
         player1.sender = address(0);
     }
@@ -242,7 +251,7 @@ contract RockPaperScissors is Killable{
         resetGame();
         playDeadline = 0;
         enrolDeadline = 0;
-        //Log
+        emit LogCancel_NoPlay(msg.sender);
         balances[msg.sender] = balances[msg.sender].add(betValue);
     }
 
@@ -260,7 +269,7 @@ contract RockPaperScissors is Killable{
         resetGame();
         playDeadline = 0;
         enrolDeadline = 0;
-        //Log
+        emit LogCancel_Override(msg.sender);
         balances[owner] = balances[owner].add(betValue);
     }
 
@@ -303,7 +312,7 @@ contract RockPaperScissors is Killable{
             addPauser(newOwner);
         }
 
-        // emit LogTransferOwnership(owner, newOwner);
+        emit LogTransferOwnership(owner, newOwner);
         owner = newOwner;
     }
 
@@ -315,7 +324,7 @@ contract RockPaperScissors is Killable{
         uint256 contractBalance = address(this).balance;
 
         require(contractBalance > 0, "Contract balance is 0.");
-        // emit LogKilledWithdrawal(msg.sender, contractBalance);
+        emit LogKilledWithdrawal(msg.sender, contractBalance);
         msg.sender.transfer(contractBalance);
     }
 

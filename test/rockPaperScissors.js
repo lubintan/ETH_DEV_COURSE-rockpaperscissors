@@ -80,7 +80,8 @@ contract('RockPaperScissors', function(accounts){
         await timeTravel(enrolPeriod);
 
         const p1Before = bigNum(await rpsCont.viewBalance({ from: player1 }));
-        await rpsCont.cancel_NoOpponent({ from: player1 });
+        const tx = await rpsCont.cancel_NoOpponent({ from: player1 });
+        await truffleAssert.eventEmitted(tx, 'LogCancel_NoOpponent');
         const p1After = bigNum(await rpsCont.viewBalance({ from: player1 }));
 
         assert.strictEqual(p1Before.toString(10),
@@ -117,7 +118,8 @@ contract('RockPaperScissors', function(accounts){
         await timeTravel(playPeriod);
 
         const p1Before = bigNum(await rpsCont.viewBalance({ from: player1 }));
-        await rpsCont.cancel_NoPlay({ from: player1 });
+        const tx = await rpsCont.cancel_NoPlay({ from: player1 });
+        await truffleAssert.eventEmitted(tx, 'LogCancel_NoPlay');
         const p1After = bigNum(await rpsCont.viewBalance({ from: player1 }));
 
         assert.strictEqual(p1Before.toString(10),
@@ -142,7 +144,8 @@ contract('RockPaperScissors', function(accounts){
 
         const ownerBefore = bigNum(await rpsCont.viewBalance({ from: david }));
         await truffleAssert.reverts(rpsCont.cancel_Override({ from: player1 }));
-        await rpsCont.cancel_Override({ from: david });
+        const tx  = await rpsCont.cancel_Override({ from: david });
+        await truffleAssert.eventEmitted(tx, 'LogCancel_Override');
         const ownerAfter = bigNum(await rpsCont.viewBalance({ from: david }));
 
         assert.strictEqual(ownerBefore.toString(10),
@@ -150,11 +153,11 @@ contract('RockPaperScissors', function(accounts){
 
     });
 
-
     it ("Funds moved correctly for game resulting in win-lose.", async() => {
         const initialDeposit = bigNum(1e10);
         await rpsCont.deposit({ from: player1, value: initialDeposit});
-        await rpsCont.deposit({ from: player2, value: initialDeposit});
+        let tx = await rpsCont.deposit({ from: player2, value: initialDeposit});
+        await truffleAssert.eventEmitted(tx, 'LogDeposit');
 
         let p1Before = bigNum(await rpsCont.viewBalance({ from: player1 }));
         let p2Before = bigNum(await rpsCont.viewBalance({ from: player2 }));
@@ -162,7 +165,8 @@ contract('RockPaperScissors', function(accounts){
         const p1Code = web3.utils.fromAscii(generator());
         const p1Bet = bigNum(5e8);
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
-        await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
+        tx = await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
+        await truffleAssert.eventEmitted(tx, 'LogEnrol');
 
         const p2Code = web3.utils.fromAscii(generator());
         const p2Bet = bigNum(await rpsCont.getCurrentBet.call({ from: player2 }));
@@ -170,7 +174,8 @@ contract('RockPaperScissors', function(accounts){
         await rpsCont.enrol(p2Hash, p2Bet, { from: player2 });
 
         await rpsCont.play(p1Code, rock, { from: player1 });
-        await rpsCont.play(p2Code, paper, { from: player2 });
+        tx = await rpsCont.play(p2Code, paper, { from: player2 });
+        await truffleAssert.eventEmitted(tx, 'LogPlay');
 
         const p1After = bigNum(await rpsCont.viewBalance({ from: player1 }));
         const p2After = bigNum(await rpsCont.viewBalance({ from: player2 }));
@@ -278,7 +283,7 @@ contract('RockPaperScissors', function(accounts){
         const player1ContBef = await rpsCont.viewBalance.call({ from: player1 });
 
         tx = await rpsCont.withdraw(withdrawAmount, { from: player1 });
-        // await truffleAssert.eventEmitted(tx, 'LogCancel');
+        await truffleAssert.eventEmitted(tx, 'LogWithdraw');
 
         const player1GasCost = await gasCost(tx);
         const player1Final = bigNum(await web3.eth.getBalance(player1));
@@ -354,6 +359,7 @@ contract('RockPaperScissors', function(accounts){
         
         const davidBalBefore = bigNum(await web3.eth.getBalance(david));
         const tx = await rpsCont.killedWithdrawal({ from: david });	
+        await truffleAssert.eventEmitted(tx, 'LogKilledWithdrawal');
         const davidGasCost = await gasCost(tx);
         const davidBalAfter = bigNum(await web3.eth.getBalance(david));
 
