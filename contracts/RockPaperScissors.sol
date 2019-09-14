@@ -19,20 +19,20 @@ contract RockPaperScissors is Killable{
     uint8 public constant rock = 1;
     uint8 public constant paper = 2;
     uint8 public constant scissors = 3;
-    uint256 public constant enrolPeriod = 1 hours;
-    uint256 public constant playPeriod = 2 hours;
-    uint256 enrolDeadline;
+    uint256 public constant playPeriod = 1 hours;
+    uint256 public constant unlockPeriod = 2 hours;
     uint256 playDeadline;
+    uint256 unlockDeadline;
     address owner;
 
     // Remember to add in LogEvents.
     event LogDeposit(address indexed sender, uint256 indexed amount);
     event LogWithdraw(address indexed sender, uint256 indexed amount);
     event LogEnrol(address indexed sender, uint256 indexed bet, bytes32 indexed entryHash);
-    event LogPlay(address indexed sender, uint8 indexed move);
+    event LogPlay(address indexed sender, uint256 indexed bet, uint8 indexed move);
+    event LogUnlock(address indexed sender, uint8 indexed move);
     event LogCancel_NoOpponent(address indexed sender);
-    event LogCancel_NoPlay(address indexed sender);
-    event LogCancel_Override(address indexed sender);
+    event LogCancel_NoUnlock(address indexed sender);
     event LogTransferOwnership(address indexed owner, address indexed newOwner);
     event LogKilledWithdrawal(address indexed sender, uint256 indexed amount);
 
@@ -83,7 +83,7 @@ contract RockPaperScissors is Killable{
         uint256 currentBalance = balances[msg.sender];
         require(currentBalance >= withdrawAmount, "Not enough funds.");
         balances[msg.sender] = currentBalance.sub(withdrawAmount);
-		emit LogWithdraw(msg.sender, withdrawAmount);
+        emit LogWithdraw(msg.sender, withdrawAmount);
         msg.sender.transfer(withdrawAmount);
     }
 
@@ -103,64 +103,64 @@ contract RockPaperScissors is Killable{
         whenNotPaused
         whenAlive
     {
+        require(msg.sender != address(0), "Player error.");
+        require(player1.sender == address(0), 'Player 1 taken. Use "play" to play against player 1');
         require(player2.sender == address(0), 'Game in progress');
-        require(msg.sender != address(0), 'Player error.');
         require(usedHashes[entryHash] == false, 'Cannot re-use hash.');
 
         uint256 currentBalance = balances[msg.sender];
         require(bet <= currentBalance, 'Not enough funds.');
 
-        if (player1.sender == address(0)){
-            balances[msg.sender] = currentBalance.sub(bet);
-            player1.bet = bet;
-            player1.entryHash = entryHash;
-            player1.sender = msg.sender;
-            enrolDeadline = now.add(enrolPeriod);
-
-        }else {
-            require(bet == player1.bet, 'Bet size must be same as current player');
-            balances[msg.sender] = currentBalance.sub(bet);
-            player2.bet = bet;
-            player2.entryHash = entryHash;
-            player2.sender = msg.sender;
-            playDeadline = now.add(playPeriod);
-        }
+        balances[msg.sender] = currentBalance.sub(bet);
+        player1.bet = bet;
+        player1.entryHash = entryHash;
+        player1.sender = msg.sender;
+        playDeadline = now.add(playPeriod);
 
         emit LogEnrol(msg.sender, bet, entryHash);
 
         usedHashes[entryHash] = true;
     }
 
-    function play(bytes32 code, uint8 move)
+    function play(uint256 bet, uint8 move)
         public
         whenNotPaused
         whenAlive
     {
-        require(player2.sender != address(0), 'Not enough entries.');
-        require((0 < move) && (move < 4), 'Ineligible move.');
         require(msg.sender != address(0), "Player error.");
+        require(player1.sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
+        require(player2.sender == address(0), 'Game in progress');
+        require(bet == player1.bet, 'Bet size must be same as current player');
+        require((0 < move) && (move < 4), 'Ineligible move.');
 
-        if (msg.sender == player1.sender){
-            require(hashIt(code, move) == player1.entryHash, 'Unverified move.');
-            require(player1.move == 0, 'Cannot re-play move.');
+        uint256 currentBalance = balances[msg.sender];
+        require(bet <= currentBalance, 'Not enough funds.');
 
-            player1.move = move;
+        balances[msg.sender] = currentBalance.sub(bet);
+        player2.bet = bet;
+        player2.move = move;
+        player2.sender = msg.sender;
+        unlockDeadline = now.add(unlockPeriod);
 
-        } else if (msg.sender == player2.sender){
-            require(hashIt(code, move) == player2.entryHash, 'Unverified move.');
-            require(player2.move == 0, 'Cannot re-play move.');
+        emit LogPlay(msg.sender, bet, move);
+    }
 
-            player2.move = move;
+    function unlock(bytes32 code, uint8 move)
+        public
+        whenNotPaused
+        whenAlive
+    {
+        require(msg.sender != address(0), "Player error.");
+        require(player1.sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
+        require(player2.move != 0, 'Cannot unlock before player 2 has played.');
+        require((0 < move) && (move < 4), 'Ineligible move.');
+        require(msg.sender == player1.sender, 'Unknown player.');
+        require(hashIt(code, move) == player1.entryHash, 'Unverified move.');
+        require(player1.move == 0, 'Cannot re-play move.');
 
-        } else {
-            revert('Unknown player.');
-        }
-
-        emit LogPlay(msg.sender, move);
-
-        if ((player1.move != 0) && (player2.move != 0)){
-            evaluate();
-        }
+        player1.move = move;
+        emit LogUnlock(msg.sender, move);
+        evaluate();
     }
 
     function evaluate()
@@ -206,8 +206,6 @@ contract RockPaperScissors is Killable{
         // Log
         // Game complete. Reset Game.
         resetGame();
-        enrolDeadline = 0;
-        playDeadline = 0;
     }
 
     function cancel_NoOpponent()
@@ -217,62 +215,26 @@ contract RockPaperScissors is Killable{
     {
         require(msg.sender == player1.sender, 'Not currently enrolled.');
         require(player2.sender == address(0), 'Opponent exists.');
-        require(now > enrolDeadline, 'Enrol period not expired');
+        require(now > playDeadline, 'Enrol period not expired');
 
-        uint256 betValue = player1.bet;
-
-        player1.bet = 0;
-        player1.entryHash = 0;
-        player1.move = 0;
-        enrolDeadline = 0;
+        balances[msg.sender] = balances[msg.sender].add(player1.bet);
+        resetGame();
         emit LogCancel_NoOpponent(msg.sender);
-        balances[player1.sender] = balances[player1.sender].add(betValue);
-        player1.sender = address(0);
     }
 
-    function cancel_NoPlay()
+    function cancel_NoUnlock()
         public
         whenNotPaused
         whenAlive
     {
-        require(now > playDeadline, 'Play period not expired.');
-        if (msg.sender == player1.sender){
-            require(player1.move != 0, 'You have not played.');
-            require(player2.move == 0, 'Other player already played.');
-        }else if (msg.sender == player2.sender){
-            require(player2.move != 0, 'You have not played.');
-            require(player1.move == 0, 'Other player already played.');
-        }
-        else{
-            revert('You are not currently enrolled in a game.');
-        }
+        require(msg.sender == player2.sender, 'Only player 2 allowed to call this function.');
+        require(player1.move == 0, 'Player 1 already unlocked their move.');
+        require(now > unlockDeadline, 'Play period not expired.');
 
-        uint256 betValue = player1.bet.add(player2.bet);
+        balances[msg.sender] = balances[msg.sender].add(player1.bet).add(player2.bet);
         resetGame();
-        playDeadline = 0;
-        enrolDeadline = 0;
-        emit LogCancel_NoPlay(msg.sender);
-        balances[msg.sender] = balances[msg.sender].add(betValue);
+        emit LogCancel_NoUnlock(msg.sender);
     }
-
-    function cancel_Override()
-        public
-        whenNotPaused
-        whenAlive
-        onlyOwner
-    {
-        require(now > playDeadline, 'Play period not expired.');
-        require(player1.move == 0, 'Player 1 already played');
-        require(player2.move == 0, 'Player 2 already played');
-
-        uint256 betValue = player1.bet.add(player2.bet);
-        resetGame();
-        playDeadline = 0;
-        enrolDeadline = 0;
-        emit LogCancel_Override(msg.sender);
-        balances[owner] = balances[owner].add(betValue);
-    }
-
 
     function resetGame()
         internal
@@ -288,6 +250,9 @@ contract RockPaperScissors is Killable{
         player2.entryHash = 0;
         player2.sender = address(0);
         player2.move = 0;
+
+        playDeadline = 0;
+        unlockDeadline = 0;
     }
 
     function hashIt(bytes32 code, uint8 move)

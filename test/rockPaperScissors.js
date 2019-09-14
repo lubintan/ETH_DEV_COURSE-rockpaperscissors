@@ -31,18 +31,18 @@ const timeTravel = function (time) {
 contract('RockPaperScissors', function(accounts){
     
     const [player1, player2, david] = accounts;
-    let rpsCont, rock, paper, scissors, enrolPeriod, playPeriod;
+    let rpsCont, rock, paper, scissors, playPeriod, unlockPeriod;
     
     beforeEach("new contract deployment", async () => {
         rpsCont = await RockPaperScissors.new({ from: david });
         rock = await rpsCont.rock.call({ from: david });
         paper = await rpsCont.paper.call({ from: david });
         scissors = await rpsCont.scissors.call({ from: david });
-        enrolPeriod = bigNum(await rpsCont.enrolPeriod.call({ from: david })).toNumber();
-        playPeriod = bigNum(await rpsCont.playPeriod.call({ from: david})).toNumber();
+        playPeriod = bigNum(await rpsCont.playPeriod.call({ from: david })).toNumber();
+        unlockPeriod = bigNum(await rpsCont.unlockPeriod.call({ from: david})).toNumber();
     });
 
-    it ("Reverts when Player 2 enrols with different bet.", async () => {
+    it ("Reverts when Player 2 plays with different bet.", async () => {
         const initialDeposit = bigNum(1e10);
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
@@ -55,15 +55,11 @@ contract('RockPaperScissors', function(accounts){
         await truffleAssert.reverts(rpsCont.enrol(p1Hash, p1Bet.add(initialDeposit), { from: player1 }));
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
 
-        const p2Code = web3.utils.fromAscii(generator());
         const p2Bet = bigNum(await rpsCont.getCurrentBet.call({ from: player2 })).add(bigNum(5));
-        const p2Hash = await rpsCont.hashIt.call(p2Code, rock, { from: player2 });
-
-        await truffleAssert.reverts(rpsCont.enrol(p2Hash, p2Bet, { from: player2 }));
-
+        await truffleAssert.reverts(rpsCont.play(p2Bet, rock, { from: player2 }));
     });
 
-    it ("Player 1 can cancel if no opponent shows up within enrol deadline.", async() => {
+    it ("Player 1 can cancel if no opponent shows up within play deadline.", async() => {
         const initialDeposit = bigNum(1e10);
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         
@@ -72,12 +68,12 @@ contract('RockPaperScissors', function(accounts){
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
-        await timeTravel(enrolPeriod/2);
+        await timeTravel(playPeriod/2);
 
         // Check that cannot cancel before enrol deadline expiry.
         await truffleAssert.reverts(rpsCont.cancel_NoOpponent({ from: player1 }));
 
-        await timeTravel(enrolPeriod);
+        await timeTravel(playPeriod);
 
         const p1Before = bigNum(await rpsCont.viewBalance({ from: player1 }));
         const tx = await rpsCont.cancel_NoOpponent({ from: player1 });
@@ -89,7 +85,7 @@ contract('RockPaperScissors', function(accounts){
 
     });
 
-    it ("Player 1 can claim bets if Player 2 does not play within play deadline.", async() => {
+    it ("Player 2 can claim bets if Player 1 does not unlock within unlock deadline.", async() => {
         const initialDeposit = bigNum(1e10);
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
@@ -99,83 +95,50 @@ contract('RockPaperScissors', function(accounts){
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, {from: player1 });
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
 
-        const p2Code = web3.utils.fromAscii(generator());
         const p2Bet = bigNum(await rpsCont.getCurrentBet.call({ from: player2 }));
-        const p2Hash = await rpsCont.hashIt.call(p2Code, rock, { from: player2 });
-        await rpsCont.enrol(p2Hash, p2Bet, { from: player2 });
-
-        // Check that player 2 cannot play using player 1's code and move.
-        await truffleAssert.reverts(rpsCont.play(p1Code, rock, { from: player2 }));
-
-        // Check that player cannot change their submitted move.
-        await truffleAssert.reverts(rpsCont.play(p1Code, paper, { from: player1 }));
-
-        await rpsCont.play(p1Code, rock, { from: player1 });
-        await timeTravel(playPeriod/2);
+        await rpsCont.play(p2Bet, rock, { from: player2 });
+        await timeTravel(unlockPeriod/2);
 
         // Check that cannot cancel before play deadline expiry.
-        await truffleAssert.reverts(rpsCont.cancel_NoPlay({ from: player1 }));
-        await timeTravel(playPeriod);
+        await truffleAssert.reverts(rpsCont.cancel_NoUnlock({ from: player2 }));
+        await timeTravel(unlockPeriod);
 
-        const p1Before = bigNum(await rpsCont.viewBalance({ from: player1 }));
-        const tx = await rpsCont.cancel_NoPlay({ from: player1 });
-        await truffleAssert.eventEmitted(tx, 'LogCancel_NoPlay');
-        const p1After = bigNum(await rpsCont.viewBalance({ from: player1 }));
+        const p2Before = bigNum(await rpsCont.viewBalance({ from: player2 }));
+        const txObj = await rpsCont.cancel_NoUnlock({ from: player2 });
+        await truffleAssert.eventEmitted(txObj, 'LogCancel_NoUnlock');
+        const p2After = bigNum(await rpsCont.viewBalance({ from: player2 }));
 
-        assert.strictEqual(p1Before.toString(10),
-            p1After.sub(p1Bet).sub(p2Bet).toString(10), "Player 1's expected contract balance incorrect.");
-    });
-
-    it ("Owner can claim bets if both players do not play within play deadline.", async() => {
-        const initialDeposit = bigNum(1e10);
-        await rpsCont.deposit({ from: player1, value: initialDeposit});
-        await rpsCont.deposit({ from: player2, value: initialDeposit});
-
-        const p1Code = web3.utils.fromAscii(generator());
-        const p1Bet = bigNum(5e8);
-        const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
-        await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
-
-        const p2Code = web3.utils.fromAscii(generator());
-        const p2Bet = bigNum(await rpsCont.getCurrentBet.call({ from: player2 }));
-        const p2Hash = await rpsCont.hashIt.call(p2Code, rock, { from: player2 });
-        await rpsCont.enrol(p2Hash, p2Bet, { from: player2 });
-        await timeTravel(playPeriod * 2);
-
-        const ownerBefore = bigNum(await rpsCont.viewBalance({ from: david }));
-        await truffleAssert.reverts(rpsCont.cancel_Override({ from: player1 }));
-        const tx  = await rpsCont.cancel_Override({ from: david });
-        await truffleAssert.eventEmitted(tx, 'LogCancel_Override');
-        const ownerAfter = bigNum(await rpsCont.viewBalance({ from: david }));
-
-        assert.strictEqual(ownerBefore.toString(10),
-            ownerAfter.sub(p1Bet).sub(p2Bet).toString(10), "Owner's expected contract balance incorrect.");
-
+        assert.strictEqual(p2Before.toString(10),
+            p2After.sub(p1Bet).sub(p2Bet).toString(10), "Player 2's expected contract balance incorrect.");
     });
 
     it ("Funds moved correctly for game resulting in win-lose.", async() => {
         const initialDeposit = bigNum(1e10);
         await rpsCont.deposit({ from: player1, value: initialDeposit});
-        let tx = await rpsCont.deposit({ from: player2, value: initialDeposit});
-        await truffleAssert.eventEmitted(tx, 'LogDeposit');
+        const txObjDeposit = await rpsCont.deposit({ from: player2, value: initialDeposit});
+        await truffleAssert.eventEmitted(txObjDeposit, 'LogDeposit');
 
-        let p1Before = bigNum(await rpsCont.viewBalance({ from: player1 }));
-        let p2Before = bigNum(await rpsCont.viewBalance({ from: player2 }));
+        const p1Before = bigNum(await rpsCont.viewBalance({ from: player1 }));
+        const p2Before = bigNum(await rpsCont.viewBalance({ from: player2 }));
 
         const p1Code = web3.utils.fromAscii(generator());
         const p1Bet = bigNum(5e8);
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
-        tx = await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
-        await truffleAssert.eventEmitted(tx, 'LogEnrol');
+        const txObjEnrol = await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
+        await truffleAssert.eventEmitted(txObjEnrol, 'LogEnrol');
 
-        const p2Code = web3.utils.fromAscii(generator());
         const p2Bet = bigNum(await rpsCont.getCurrentBet.call({ from: player2 }));
-        const p2Hash = await rpsCont.hashIt.call(p2Code, paper, { from: player2 });
-        await rpsCont.enrol(p2Hash, p2Bet, { from: player2 });
+        const txObjPlay = await rpsCont.play(p2Bet, paper, { from: player2 });
+        await truffleAssert.eventEmitted(txObjPlay, 'LogPlay');
 
-        await rpsCont.play(p1Code, rock, { from: player1 });
-        tx = await rpsCont.play(p2Code, paper, { from: player2 });
-        await truffleAssert.eventEmitted(tx, 'LogPlay');
+        // Check that player 2 cannot unlock using player 1's code and move.
+        await truffleAssert.reverts(rpsCont.unlock(p1Code, rock, { from: player2 }));
+
+        // Check that player cannot change their submitted move.
+        await truffleAssert.reverts(rpsCont.unlock(p1Code, paper, { from: player1 }));
+
+        const txObjUnlock = await rpsCont.unlock(p1Code, rock, { from: player1 });
+        await truffleAssert.eventEmitted(txObjUnlock, 'LogUnlock');
 
         const p1After = bigNum(await rpsCont.viewBalance({ from: player1 }));
         const p2After = bigNum(await rpsCont.viewBalance({ from: player2 }));
@@ -188,11 +151,11 @@ contract('RockPaperScissors', function(accounts){
 
         // Winner can use earnings to place bigger bet.
 
-        const p2Code2 = web3.utils.fromAscii(generator());
         const newBet = initialDeposit.add(p2Bet);
-        const p2Hash2 = await rpsCont.hashIt.call(p2Code2, paper, { from: player2 });
+        const p2Code = web3.utils.fromAscii(generator());
+        const p2Hash = await rpsCont.hashIt.call(p2Code, paper, { from: player2 });
 
-        await rpsCont.enrol(p2Hash2, newBet, { from: player2 });
+        await rpsCont.enrol(p2Hash, newBet, { from: player2 });
     });
 
     it ("Funds moved correctly for game resulting in draw.", async() => {
@@ -200,30 +163,36 @@ contract('RockPaperScissors', function(accounts){
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
 
-        let p1Before = bigNum(await rpsCont.viewBalance({ from: player1 }));
-        let p2Before = bigNum(await rpsCont.viewBalance({ from: player2 }));
+        const p1Before = bigNum(await rpsCont.viewBalance({ from: player1 }));
+        const p2Before = bigNum(await rpsCont.viewBalance({ from: player2 }));
 
         const p1Code = web3.utils.fromAscii(generator());
         const p1Bet = bigNum(5e8);
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
 
-        const p2Code = web3.utils.fromAscii(generator());
         const p2Bet = bigNum(await rpsCont.getCurrentBet.call({ from: player2 }));
-        const p2Hash = await rpsCont.hashIt.call(p2Code, rock, { from: player2 });
-        await rpsCont.enrol(p2Hash, p2Bet, { from: player2 });
+        await rpsCont.play(p2Bet, rock, { from: player2 });
 
-        await rpsCont.play(p1Code, rock, { from: player1 });
-        await rpsCont.play(p2Code, rock, { from: player2 });
+        const p1Mid = bigNum(await rpsCont.viewBalance({ from: player1 }));
+        const p2Mid = bigNum(await rpsCont.viewBalance({ from: player2 }));
+
+        assert.strictEqual(p1Before.sub(p1Bet).toString(10),
+            p1Mid.toString(10), "Player 1's expected contract balance incorrect.");
+
+        assert.strictEqual(p2Before.sub(p2Bet).toString(10),
+            p2Mid.toString(10), "Player 2's expected contract balance incorrect.");
+
+        await rpsCont.unlock(p1Code, rock, { from: player1 });
 
         const p1After = bigNum(await rpsCont.viewBalance({ from: player1 }));
         const p2After = bigNum(await rpsCont.viewBalance({ from: player2 }));
 
         assert.strictEqual(p1Before.toString(10),
-            p1After.toString(10), "Player 1's expected contract balance incorrect.");
+            p1After.toString(10), "Player 1's final expected contract balance incorrect.");
 
         assert.strictEqual(p2Before.toString(10),
-            p2After.toString(10), "Player 2's expected contract balance incorrect.");
+            p2After.toString(10), "Player 2's final expected contract balance incorrect.");
     });
 
     it ("Game in progress can run properly after pausing and unpausing", async() => {
@@ -240,25 +209,17 @@ contract('RockPaperScissors', function(accounts){
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
 
         await rpsCont.pause({ from: david });
-        await timeTravel(enrolPeriod/2);
+        await timeTravel(playPeriod/2);
         await rpsCont.unpause({ from: david });
 
-        const p2Code = web3.utils.fromAscii(generator());
         const p2Bet = bigNum(await rpsCont.getCurrentBet.call({ from: player2 }));
-        const p2Hash = await rpsCont.hashIt.call(p2Code, paper, { from: player2 });
-        await rpsCont.enrol(p2Hash, p2Bet, { from: player2 });
-
-        await rpsCont.pause({ from: david });
-        await timeTravel(enrolPeriod/2);
-        await rpsCont.unpause({ from: david });
-
-        await rpsCont.play(p1Code, rock, { from: player1 });
+        await rpsCont.play(p2Bet, paper, { from: player2 });
 
         await rpsCont.pause({ from: david });
         await timeTravel(playPeriod/2);
         await rpsCont.unpause({ from: david });
 
-        await rpsCont.play(p2Code, paper, { from: player2 });
+        await rpsCont.unlock(p1Code, rock, { from: player1 });
 
         const p1After = bigNum(await rpsCont.viewBalance({ from: player1 }));
         const p2After = bigNum(await rpsCont.viewBalance({ from: player2 }));
@@ -306,13 +267,9 @@ contract('RockPaperScissors', function(accounts){
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
 
-        const p2Code = web3.utils.fromAscii(generator());
         const p2Bet = bigNum(await rpsCont.getCurrentBet.call({ from: player2 }));
-        const p2Hash = await rpsCont.hashIt.call(p2Code, paper, { from: player2 });
-        await rpsCont.enrol(p2Hash, p2Bet, { from: player2 });
-
-        await rpsCont.play(p1Code, rock, { from: player1 });
-        await rpsCont.play(p2Code, paper, { from: player2 });
+        await rpsCont.play(p2Bet, paper, { from: player2 });
+        await rpsCont.unlock(p1Code, rock, { from: player1 });
 
         await truffleAssert.reverts(rpsCont.enrol(p1Hash, p1Bet, { from: player1 }));
     });
@@ -348,11 +305,9 @@ contract('RockPaperScissors', function(accounts){
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
 
-        const p2Code = web3.utils.fromAscii(generator());
         const p2Bet = bigNum(await rpsCont.getCurrentBet.call({ from: player2 }));
-        const p2Hash = await rpsCont.hashIt.call(p2Code, paper, { from: player2 });
-        await rpsCont.enrol(p2Hash, p2Bet, { from: player2 });
-        await rpsCont.play(p1Code, rock, { from: player1 });
+        await rpsCont.play(p2Bet, paper, { from: player2 });
+        await rpsCont.unlock(p1Code, rock, { from: player1 });
 
         await rpsCont.pause({ from: david });
         await rpsCont.kill({ from: david });
@@ -384,11 +339,11 @@ contract('RockPaperScissors', function(accounts){
         await truffleAssert.reverts(rpsCont.withdraw(initialDeposit, { from: player1 }));
         await truffleAssert.reverts(rpsCont.getCurrentBet({ from: player2 }));
         await truffleAssert.reverts(rpsCont.hashIt(p1Code, rock, { from: player1 }));
-        await truffleAssert.reverts(rpsCont.enrol(p1Hash, rock, { from: player1 }));
-        await truffleAssert.reverts(rpsCont.play(p1Code, rock, { from: player1 }));
+        await truffleAssert.reverts(rpsCont.enrol(p1Hash, p1Bet, { from: player1 }));
+        await truffleAssert.reverts(rpsCont.play(p1Bet, rock, { from: player2 }));
+        await truffleAssert.reverts(rpsCont.unlock(p1Code, rock, { from: player1 }));
         await truffleAssert.reverts(rpsCont.transferOwnership(player1, { from: david }));
-        await truffleAssert.reverts(rpsCont.cancel_Override({ from: david }));
-        await truffleAssert.reverts(rpsCont.cancel_NoPlay({ from: player1 }));
+        await truffleAssert.reverts(rpsCont.cancel_NoUnlock({ from: player2 }));
         await truffleAssert.reverts(rpsCont.cancel_NoOpponent({ from: player1 }));
         
     });
