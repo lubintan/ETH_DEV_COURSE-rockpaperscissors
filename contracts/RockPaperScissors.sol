@@ -4,21 +4,23 @@ import './Killable.sol';
 
 contract RockPaperScissors is Killable{
 
+    enum Action
+    {
+        Null, Rock, Paper, Scissors
+    }
+
     struct Player
     {
         uint256 bet;
         bytes32 entryHash;
         address sender;
-        uint8 move;
+        Action move;
     }
 
     mapping (address => uint256) balances;
     mapping (bytes32 => bool) usedHashes;
     Player player1;
     Player player2;
-    uint8 public constant rock = 1;
-    uint8 public constant paper = 2;
-    uint8 public constant scissors = 3;
     uint256 public constant playPeriod = 1 hours;
     uint256 public constant unlockPeriod = 2 hours;
     uint256 playDeadline;
@@ -26,15 +28,15 @@ contract RockPaperScissors is Killable{
     address owner;
 
     // Remember to add in LogEvents.
-    event LogDeposit(address indexed sender, uint256 indexed amount);
-    event LogWithdraw(address indexed sender, uint256 indexed amount);
+    event LogDeposit(address indexed sender, uint256 amount);
+    event LogWithdraw(address indexed sender, uint256 amount);
     event LogEnrol(address indexed sender, uint256 indexed bet, bytes32 indexed entryHash);
-    event LogPlay(address indexed sender, uint256 indexed bet, uint8 indexed move);
-    event LogUnlock(address indexed sender, uint8 indexed move);
-    event LogCancel_NoOpponent(address indexed sender);
-    event LogCancel_NoUnlock(address indexed sender);
+    event LogPlay(address indexed sender, uint256 indexed bet, Action indexed move);
+    event LogUnlock(address indexed sender, Action indexed move);
+    event LogCancelNoOpponent(address indexed sender);
+    event LogCancelNoUnlock(address indexed sender);
     event LogTransferOwnership(address indexed owner, address indexed newOwner);
-    event LogKilledWithdrawal(address indexed sender, uint256 indexed amount);
+    event LogKilledWithdrawal(address indexed sender, uint256 amount);
 
 
     using SafeMath for uint256;
@@ -64,7 +66,7 @@ contract RockPaperScissors is Killable{
         balances[msg.sender] = balances[msg.sender].add(msg.value);
     }
 
-    function viewBalance()
+    function getBalance()
         public
         view
         whenAlive
@@ -81,7 +83,6 @@ contract RockPaperScissors is Killable{
     {
         require(withdrawAmount > 0, "Nothing to withdraw");
         uint256 currentBalance = balances[msg.sender];
-        require(currentBalance >= withdrawAmount, "Not enough funds.");
         balances[msg.sender] = currentBalance.sub(withdrawAmount);
         emit LogWithdraw(msg.sender, withdrawAmount);
         msg.sender.transfer(withdrawAmount);
@@ -106,11 +107,9 @@ contract RockPaperScissors is Killable{
         require(msg.sender != address(0), "Player error.");
         require(player1.sender == address(0), 'Player 1 taken. Use "play" to play against player 1');
         require(player2.sender == address(0), 'Game in progress');
-        require(usedHashes[entryHash] == false, 'Cannot re-use hash.');
+        require(!usedHashes[entryHash], 'Cannot re-use hash.');
 
         uint256 currentBalance = balances[msg.sender];
-        require(bet <= currentBalance, 'Not enough funds.');
-
         balances[msg.sender] = currentBalance.sub(bet);
         player1.bet = bet;
         player1.entryHash = entryHash;
@@ -134,15 +133,13 @@ contract RockPaperScissors is Killable{
         require((0 < move) && (move < 4), 'Ineligible move.');
 
         uint256 currentBalance = balances[msg.sender];
-        require(bet <= currentBalance, 'Not enough funds.');
-
         balances[msg.sender] = currentBalance.sub(bet);
         player2.bet = bet;
-        player2.move = move;
+        player2.move = Action(move);
         player2.sender = msg.sender;
         unlockDeadline = now.add(unlockPeriod);
 
-        emit LogPlay(msg.sender, bet, move);
+        emit LogPlay(msg.sender, bet, Action(move));
     }
 
     function unlock(bytes32 code, uint8 move)
@@ -152,14 +149,14 @@ contract RockPaperScissors is Killable{
     {
         require(msg.sender != address(0), "Player error.");
         require(player1.sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
-        require(player2.move != 0, 'Cannot unlock before player 2 has played.');
+        require(player2.move != Action.Null, 'Cannot unlock before player 2 has played.');
         require((0 < move) && (move < 4), 'Ineligible move.');
         require(msg.sender == player1.sender, 'Unknown player.');
         require(hashIt(code, move) == player1.entryHash, 'Unverified move.');
-        require(player1.move == 0, 'Cannot re-play move.');
+        require(player1.move == Action.Null, 'Cannot re-play move.');
 
-        player1.move = move;
-        emit LogUnlock(msg.sender, move);
+        player1.move = Action(move);
+        emit LogUnlock(msg.sender, Action(move));
         evaluate();
     }
 
@@ -168,9 +165,9 @@ contract RockPaperScissors is Killable{
         whenNotPaused
         whenAlive
     {
-        uint8 p1Move = player1.move;
-        uint8 p2Move = player2.move;
-        uint256 betSize = player1.bet; // player bets forced to be equal.
+        int8 p1Move = int8(player1.move);
+        int8 p2Move = int8(player2.move);
+        uint256 betSize = player1.bet; // player bets already forced to be equal.
         address p1Sender = player1.sender;
         address p2Sender = player2.sender;
 
@@ -178,37 +175,20 @@ contract RockPaperScissors is Killable{
             balances[p1Sender] = balances[p1Sender].add(betSize);
             balances[p2Sender] = balances[p2Sender].add(betSize);
 
-        } else if (p1Move == rock){
-            if (p2Move == paper){
-                balances[p2Sender] = balances[p2Sender].add(betSize).add(betSize);
-            }
-            else if (p2Move == scissors){
+        } else {
+            int8 result = p1Move - p2Move;
+            if ((result == 1) || (result == -2)){
                 balances[p1Sender] = balances[p1Sender].add(betSize).add(betSize);
-            }
-
-        } else if (p1Move == paper){
-            if (p2Move == scissors){
+            } else {
                 balances[p2Sender] = balances[p2Sender].add(betSize).add(betSize);
-            }
-            else if (p2Move == rock){
-                balances[p1Sender] = balances[p1Sender].add(betSize).add(betSize);
-            }
-
-        } else if (p1Move == scissors){
-            if (p2Move == rock){
-                balances[p2Sender] = balances[p2Sender].add(betSize).add(betSize);
-            }
-            else if (p2Move == paper){
-                balances[p1Sender] = balances[p1Sender].add(betSize).add(betSize);
             }
         }
-
         // Log
         // Game complete. Reset Game.
         resetGame();
     }
 
-    function cancel_NoOpponent()
+    function cancelNoOpponent()
         public
         whenNotPaused
         whenAlive
@@ -219,21 +199,21 @@ contract RockPaperScissors is Killable{
 
         balances[msg.sender] = balances[msg.sender].add(player1.bet);
         resetGame();
-        emit LogCancel_NoOpponent(msg.sender);
+        emit LogCancelNoOpponent(msg.sender);
     }
 
-    function cancel_NoUnlock()
+    function cancelNoUnlock()
         public
         whenNotPaused
         whenAlive
     {
         require(msg.sender == player2.sender, 'Only player 2 allowed to call this function.');
-        require(player1.move == 0, 'Player 1 already unlocked their move.');
+        require(player1.move == Action.Null, 'Player 1 already unlocked their move.');
         require(now > unlockDeadline, 'Play period not expired.');
 
         balances[msg.sender] = balances[msg.sender].add(player1.bet).add(player2.bet);
         resetGame();
-        emit LogCancel_NoUnlock(msg.sender);
+        emit LogCancelNoUnlock(msg.sender);
     }
 
     function resetGame()
@@ -244,12 +224,12 @@ contract RockPaperScissors is Killable{
         player1.bet = 0;
         player1.entryHash = 0;
         player1.sender = address(0);
-        player1.move = 0;
+        player1.move = Action.Null;
 
         player2.bet = 0;
         player2.entryHash = 0;
         player2.sender = address(0);
-        player2.move = 0;
+        player2.move = Action.Null;
 
         playDeadline = 0;
         unlockDeadline = 0;
