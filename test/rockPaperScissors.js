@@ -29,14 +29,14 @@ const timeTravel =  async function (duration) {
 
 contract('RockPaperScissors', function(accounts){
     
-    const [player1, player2, david] = accounts;
+    const [player1, player2, owner] = accounts;
     const [nothing, rock, paper, scissors, disallowed] = [0, 1, 2, 3, 4];
     let rpsCont, playPeriod, unlockPeriod;
     
     beforeEach("new contract deployment", async () => {
-        rpsCont = await RockPaperScissors.new({ from: david });
-        playPeriod = bigNum(await rpsCont.playPeriod.call({ from: david })).toNumber();
-        unlockPeriod = bigNum(await rpsCont.unlockPeriod.call({ from: david})).toNumber();
+        rpsCont = await RockPaperScissors.new({ from: owner });
+        playPeriod = bigNum(await rpsCont.playPeriod.call({ from: owner })).toNumber();
+        unlockPeriod = bigNum(await rpsCont.unlockPeriod.call({ from: owner})).toNumber();
     });
 
     it ("Rejects ineligible move.", async() => {
@@ -256,16 +256,16 @@ contract('RockPaperScissors', function(accounts){
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
 
-        await rpsCont.pause({ from: david });
+        await rpsCont.pause({ from: owner });
         await timeTravel(playPeriod/2);
-        await rpsCont.unpause({ from: david });
+        await rpsCont.unpause({ from: owner });
 
         const p2Bet = bigNum(await rpsCont.getCurrentBet.call({ from: player2 }));
         await rpsCont.play(p2Bet, paper, { from: player2 });
 
-        await rpsCont.pause({ from: david });
+        await rpsCont.pause({ from: owner });
         await timeTravel(playPeriod/2);
-        await rpsCont.unpause({ from: david });
+        await rpsCont.unpause({ from: owner });
 
         await rpsCont.unlock(p1Code, rock, { from: player1 });
 
@@ -326,24 +326,24 @@ contract('RockPaperScissors', function(accounts){
     });
 
     it ("Reverts killing when contract is not paused.", async () => {
-        await truffleAssert.reverts(rpsCont.kill({ from: david }));
+        await truffleAssert.reverts(rpsCont.kill({ from: owner }));
     });
 
     it ("Reverts killing by non-pauser/owner.", async () => {
-        await rpsCont.pause( {from: david });
+        await rpsCont.pause( {from: owner });
         await truffleAssert.reverts(rpsCont.kill({ from: player1 }));
     });
 
     it ("Reverts post-killing withdrawal by non-owner.", async () => {
-        await rpsCont.pause( {from: david });
-        await rpsCont.kill( {from: david });
+        await rpsCont.pause( {from: owner });
+        await rpsCont.kill( {from: owner });
         await truffleAssert.reverts(rpsCont.killedWithdrawal({ from: player1 }));
     });
 
     it ("Reverts post-killing withdrawal of 0 balance.", async () => {
-        await rpsCont.pause({ from: david });
-        await rpsCont.kill({ from: david });
-        await truffleAssert.reverts(rpsCont.killedWithdrawal({ from: david }));
+        await rpsCont.pause({ from: owner });
+        await rpsCont.kill({ from: owner });
+        await truffleAssert.reverts(rpsCont.killedWithdrawal({ from: owner }));
     });
 
     it ("Post-killing withdrawal moves funds to the owner correctly.", async () => {
@@ -360,21 +360,38 @@ contract('RockPaperScissors', function(accounts){
         await rpsCont.play(p2Bet, paper, { from: player2 });
         await rpsCont.unlock(p1Code, rock, { from: player1 });
 
-        await rpsCont.pause({ from: david });
-        await rpsCont.kill({ from: david });
+        await rpsCont.pause({ from: owner });
+        await rpsCont.kill({ from: owner });
         
-        const davidBalBefore = bigNum(await web3.eth.getBalance(david));
-        const txObjKW = await rpsCont.killedWithdrawal({ from: david });
+        const ownerBalBefore = bigNum(await web3.eth.getBalance(owner));
+        const txObjKW = await rpsCont.killedWithdrawal({ from: owner });
 
         assert.strictEqual(txObjKW.logs[0].event, 'LogKilledWithdrawal', 'Wrong event emitted.');
-        assert.strictEqual(txObjKW.logs[0].args.sender, david, 'Killed Withdrawal Log Sender Error');
+        assert.strictEqual(txObjKW.logs[0].args.sender, owner, 'Killed Withdrawal Log Sender Error');
         assert.strictEqual(txObjKW.logs[0].args.amount.toString(10), initialDeposit.add(initialDeposit).toString(10), 'Killed Withdrawal Log Amount Error');
 
-        const davidGasCost = await gasCost(txObjKW);
-        const davidBalAfter = bigNum(await web3.eth.getBalance(david));
+        const ownerGasCost = await gasCost(txObjKW);
+        const ownerBalAfter = bigNum(await web3.eth.getBalance(owner));
 
-        assert.strictEqual(davidBalBefore.sub(davidGasCost).toString(10),
-            davidBalAfter.sub(initialDeposit).sub(initialDeposit).toString(10), "Owner's expected balance incorrect.");
+        assert.strictEqual(ownerBalBefore.sub(ownerGasCost).toString(10),
+            ownerBalAfter.sub(initialDeposit).sub(initialDeposit).toString(10), "Owner's expected balance incorrect.");
+    });
+
+    it ("Transfer Ownership sets owner to new owner.", async () => {
+        const currentOwner = await rpsCont.owner.call({ from: owner });
+        assert.strictEqual(currentOwner, owner, "Owner not as expected.");
+
+        // Check that non-owner cannot transfer ownership.
+        await truffleAssert.reverts(rpsCont.transferOwnership(player1, { from: player1 }));
+
+        const txObjTransfer = await rpsCont.transferOwnership(player1, { from: owner });
+
+        assert.strictEqual(txObjTransfer.logs[0].event, 'PauserAdded', 'Wrong event emitted');
+        assert.strictEqual(txObjTransfer.logs[0].args.account, player1, 'Pauser Log New Pauser Error');
+
+        assert.strictEqual(txObjTransfer.logs[1].event, 'LogTransferOwnership', 'Wrong event emitted.');
+        assert.strictEqual(txObjTransfer.logs[1].args.owner, owner, 'Transfer Ownership Log Old Owner Error');
+        assert.strictEqual(txObjTransfer.logs[1].args.newOwner, player1, 'Transfer Ownership Log New Owner Error');
     });
 
     it ("Post-killing contract functions revert upon invocation.", async () => {
@@ -385,9 +402,9 @@ contract('RockPaperScissors', function(accounts){
         const p1Bet = bigNum(web3.utils.toWei('0.5', "Gwei"));
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         
-        await rpsCont.pause({ from: david });		
-        await rpsCont.kill({ from: david });
-        await rpsCont.unpause({ from: david });		
+        await rpsCont.pause({ from: owner });		
+        await rpsCont.kill({ from: owner });
+        await rpsCont.unpause({ from: owner });		
 
         await truffleAssert.reverts(rpsCont.deposit({ from: player1, value: initialDeposit }));
         await truffleAssert.reverts(rpsCont.getBalance({ from: player1 }));
@@ -397,7 +414,7 @@ contract('RockPaperScissors', function(accounts){
         await truffleAssert.reverts(rpsCont.enrol(p1Hash, p1Bet, { from: player1 }));
         await truffleAssert.reverts(rpsCont.play(p1Bet, rock, { from: player2 }));
         await truffleAssert.reverts(rpsCont.unlock(p1Code, rock, { from: player1 }));
-        await truffleAssert.reverts(rpsCont.transferOwnership(player1, { from: david }));
+        await truffleAssert.reverts(rpsCont.transferOwnership(player1, { from: owner }));
         await truffleAssert.reverts(rpsCont.cancelNoUnlock({ from: player2 }));
         await truffleAssert.reverts(rpsCont.cancelNoOpponent({ from: player1 }));
         

@@ -1,8 +1,8 @@
 pragma solidity 0.5.10;
 
-import './Killable.sol';
+import './Ownable.sol';
 
-contract RockPaperScissors is Killable{
+contract RockPaperScissors is Ownable{
 
     enum Action
     {
@@ -25,7 +25,6 @@ contract RockPaperScissors is Killable{
     uint256 public constant unlockPeriod = 2 hours;
     uint256 public playDeadline;
     uint256 public unlockDeadline;
-    address public owner;
 
     // Remember to add in LogEvents.
     event LogDeposit(address indexed sender, uint256 amount);
@@ -37,7 +36,6 @@ contract RockPaperScissors is Killable{
     event LogDrawGame(address indexed player1, address indexed player2, uint256 amount);
     event LogCancelNoOpponent(address indexed sender);
     event LogCancelNoUnlock(address indexed sender);
-    event LogTransferOwnership(address indexed owner, address indexed newOwner);
     event LogKilledWithdrawal(address indexed sender, uint256 amount);
 
 
@@ -47,12 +45,6 @@ contract RockPaperScissors is Killable{
     public
     {
         owner = msg.sender;
-    }
-
-    modifier onlyOwner()
-    {
-        require (msg.sender == owner);
-        _;
     }
 
     function deposit()
@@ -244,22 +236,6 @@ contract RockPaperScissors is Killable{
         returns (bytes32)
     {
         return keccak256(abi.encodePacked(code, move, address(this), msg.sender));
-    }
-
-    function transferOwnership(address newOwner)
-        public
-        whenPaused
-        whenAlive
-        onlyOwner
-    {
-        require (newOwner != address(0), 'New owner cannot be non-existent.');
-
-        if (!isPauser(newOwner)){
-            addPauser(newOwner);
-        }
-
-        emit LogTransferOwnership(owner, newOwner);
-        owner = newOwner;
     }
 
     function killedWithdrawal()
