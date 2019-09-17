@@ -8,7 +8,7 @@ import './local/Pausable.sol';
 
 contract Killable is Pausable{
 
-    bool private killed;
+    bool public killed;
     event LogKilled(address account);
 
     constructor ()

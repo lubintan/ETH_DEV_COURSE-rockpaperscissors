@@ -30,7 +30,7 @@ const timeTravel =  async function (duration) {
 contract('RockPaperScissors', function(accounts){
     
     const [player1, player2, david] = accounts;
-    const [rock, paper, scissors, disallowed] = [1, 2, 3, 4];
+    const [nothing, rock, paper, scissors, disallowed] = [0, 1, 2, 3, 4];
     let rpsCont, playPeriod, unlockPeriod;
     
     beforeEach("new contract deployment", async () => {
@@ -40,12 +40,12 @@ contract('RockPaperScissors', function(accounts){
     });
 
     it ("Rejects ineligible move.", async() => {
-        const initialDeposit = bigNum(1e10);
+        const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
         
         const p1Code = web3.utils.fromAscii(generator());
-        const p1Bet = bigNum(5e8);
+        const p1Bet = bigNum(web3.utils.toWei('0.5', "Gwei"));
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         
         // Check that cannot enrol more than initial deposit.
@@ -57,12 +57,12 @@ contract('RockPaperScissors', function(accounts){
     });
 
     it ("Reverts when Player 2 plays with different bet.", async () => {
-        const initialDeposit = bigNum(1e10);
+        const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
         
         const p1Code = web3.utils.fromAscii(generator());
-        const p1Bet = bigNum(5e8);
+        const p1Bet = bigNum(web3.utils.toWei('0.5', "Gwei"));
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         
         // Check that cannot enrol more than initial deposit.
@@ -74,11 +74,11 @@ contract('RockPaperScissors', function(accounts){
     });
 
     it ("Player 1 can cancel if no opponent shows up within play deadline.", async() => {
-        const initialDeposit = bigNum(1e10);
+        const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         
         const p1Code = web3.utils.fromAscii(generator());
-        const p1Bet = bigNum(5e8);
+        const p1Bet = bigNum(web3.utils.toWei('0.5', "Gwei"));
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
@@ -92,8 +92,8 @@ contract('RockPaperScissors', function(accounts){
         const p1Before = bigNum(await rpsCont.getBalance({ from: player1 }));
         const txObjCancel = await rpsCont.cancelNoOpponent({ from: player1 });
         
-        await truffleAssert.eventEmitted(txObjCancel, 'LogCancelNoOpponent');
-        assert.strictEqual(txObjCancel.logs[0].args.sender, player1, 'Cancel No Opponent Log Sender Error');       
+        assert.strictEqual(txObjCancel.logs[0].event, 'LogCancelNoOpponent', 'Wrong event emitted.');
+        assert.strictEqual(txObjCancel.logs[0].args.sender, player1, 'Cancel No Opponent Log Sender Error');
 
         const p1After = bigNum(await rpsCont.getBalance({ from: player1 }));
 
@@ -103,12 +103,12 @@ contract('RockPaperScissors', function(accounts){
     });
 
     it ("Player 2 can claim bets if Player 1 does not unlock within unlock deadline.", async() => {
-        const initialDeposit = bigNum(1e10);
+        const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
 
         const p1Code = web3.utils.fromAscii(generator());
-        const p1Bet = bigNum(5e8);
+        const p1Bet = bigNum(web3.utils.toWei('0.5', "Gwei"));
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, {from: player1 });
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
 
@@ -123,7 +123,7 @@ contract('RockPaperScissors', function(accounts){
         const p2Before = bigNum(await rpsCont.getBalance({ from: player2 }));
         const txObjCancel = await rpsCont.cancelNoUnlock({ from: player2 });
         
-        await truffleAssert.eventEmitted(txObjCancel, 'LogCancelNoUnlock');
+        assert.strictEqual(txObjCancel.logs[0].event, 'LogCancelNoUnlock', 'Wrong event emitted.');
         assert.strictEqual(txObjCancel.logs[0].args.sender, player2, 'Cancel No Unlock Log Sender Error');
 
         const p2After = bigNum(await rpsCont.getBalance({ from: player2 }));
@@ -133,11 +133,11 @@ contract('RockPaperScissors', function(accounts){
     });
 
     it ("Funds moved correctly for game resulting in win-lose.", async() => {
-        const initialDeposit = bigNum(1e10);
+        const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         const txObjDeposit = await rpsCont.deposit({ from: player2, value: initialDeposit});
         
-        await truffleAssert.eventEmitted(txObjDeposit, 'LogDeposit');
+        assert.strictEqual(txObjDeposit.logs[0].event, 'LogDeposit', 'Wrong event emitted.');
         assert.strictEqual(txObjDeposit.logs[0].args.sender, player2, 'Deposit Log Sender Error');
         assert.strictEqual(txObjDeposit.logs[0].args.amount.toString(10), initialDeposit.toString(10), 'Deposit Log Amount Error');
 
@@ -145,11 +145,11 @@ contract('RockPaperScissors', function(accounts){
         const p2Before = bigNum(await rpsCont.getBalance({ from: player2 }));
 
         const p1Code = web3.utils.fromAscii(generator());
-        const p1Bet = bigNum(5e8);
+        const p1Bet = bigNum(web3.utils.toWei('0.5', "Gwei"));
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         const txObjEnrol = await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
 
-        await truffleAssert.eventEmitted(txObjEnrol, 'LogEnrol');
+        assert.strictEqual(txObjEnrol.logs[0].event, 'LogEnrol', 'Wrong event emitted.');
         assert.strictEqual(txObjEnrol.logs[0].args.sender, player1, 'Enrol Log Sender Error');
         assert.strictEqual(txObjEnrol.logs[0].args.bet.toString(10), p1Bet.toString(10), 'Enrol Log Bet Error');
         assert.strictEqual(txObjEnrol.logs[0].args.entryHash, p1Hash, 'Enrol Log Entry Hash Error');
@@ -157,7 +157,7 @@ contract('RockPaperScissors', function(accounts){
         const p2Bet = bigNum(await rpsCont.getCurrentBet.call({ from: player2 }));
         const txObjPlay = await rpsCont.play(p2Bet, paper, { from: player2 });
 
-        await truffleAssert.eventEmitted(txObjPlay, 'LogPlay');
+        assert.strictEqual(txObjPlay.logs[0].event, 'LogPlay', 'Wrong event emitted.');
         assert.strictEqual(txObjPlay.logs[0].args.sender, player2, 'Play Log Sender Error');
         assert.strictEqual(txObjPlay.logs[0].args.bet.toString(10), p2Bet.toString(10), 'Play Log Bet Error');
         assert.strictEqual(txObjPlay.logs[0].args.move.toNumber(), paper, 'Play Log Move Error');
@@ -170,9 +170,14 @@ contract('RockPaperScissors', function(accounts){
 
         const txObjUnlock = await rpsCont.unlock(p1Code, rock, { from: player1 });
 
-        await truffleAssert.eventEmitted(txObjUnlock, 'LogUnlock');
+        assert.strictEqual(txObjUnlock.logs[0].event, 'LogUnlock', 'Wrong event emitted.');
         assert.strictEqual(txObjUnlock.logs[0].args.sender, player1, 'Unlock Log Sender Error');
         assert.strictEqual(txObjUnlock.logs[0].args.move.toNumber(), rock, 'Unlock Log Move Error');
+
+        assert.strictEqual(txObjUnlock.logs[1].event, 'LogWinnerFound', 'Wrong event emitted.');
+        assert.strictEqual(txObjUnlock.logs[1].args.winner, player2, 'Winner Found Log Winner Error');
+        assert.strictEqual(txObjUnlock.logs[1].args.loser, player1, 'Winner Found Log Loser Error');
+        assert.strictEqual(txObjUnlock.logs[1].args.amount.toString(10), p1Bet.toString(10), 'Winner Found Log Amount Error');
 
         const p1After = bigNum(await rpsCont.getBalance({ from: player1 }));
         const p2After = bigNum(await rpsCont.getBalance({ from: player2 }));
@@ -193,7 +198,7 @@ contract('RockPaperScissors', function(accounts){
     });
 
     it ("Funds moved correctly for game resulting in draw.", async() => {
-        const initialDeposit = bigNum(1e10);
+        const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
 
@@ -201,7 +206,7 @@ contract('RockPaperScissors', function(accounts){
         const p2Before = bigNum(await rpsCont.getBalance({ from: player2 }));
 
         const p1Code = web3.utils.fromAscii(generator());
-        const p1Bet = bigNum(5e8);
+        const p1Bet = bigNum(web3.utils.toWei('0.5', "Gwei"));
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
 
@@ -217,7 +222,16 @@ contract('RockPaperScissors', function(accounts){
         assert.strictEqual(p2Before.sub(p2Bet).toString(10),
             p2Mid.toString(10), "Player 2's expected contract balance incorrect.");
 
-        await rpsCont.unlock(p1Code, rock, { from: player1 });
+        const txObjUnlock = await rpsCont.unlock(p1Code, rock, { from: player1 });
+
+        assert.strictEqual(txObjUnlock.logs[0].event, 'LogUnlock', 'Wrong event emitted.');
+        assert.strictEqual(txObjUnlock.logs[0].args.sender, player1, 'Unlock Log Sender Error');
+        assert.strictEqual(txObjUnlock.logs[0].args.move.toNumber(), rock, 'Unlock Log Move Error');
+
+        assert.strictEqual(txObjUnlock.logs[1].event, 'LogDrawGame', 'Wrong event emitted.');
+        assert.strictEqual(txObjUnlock.logs[1].args.player1, player1, 'Draw Game Log Player 1 Error');
+        assert.strictEqual(txObjUnlock.logs[1].args.player2, player2, 'Draw Game Log Player 2 Error');
+        assert.strictEqual(txObjUnlock.logs[1].args.amount.toString(10), p1Bet.toString(10), 'Draw Game Log Amount Error');
 
         const p1After = bigNum(await rpsCont.getBalance({ from: player1 }));
         const p2After = bigNum(await rpsCont.getBalance({ from: player2 }));
@@ -230,7 +244,7 @@ contract('RockPaperScissors', function(accounts){
     });
 
     it ("Game in progress can run properly after pausing and unpausing", async() => {
-        const initialDeposit = bigNum(1e10);
+        const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
 
@@ -238,7 +252,7 @@ contract('RockPaperScissors', function(accounts){
         let p2Before = bigNum(await rpsCont.getBalance({ from: player2 }));
 
         const p1Code = web3.utils.fromAscii(generator());
-        const p1Bet = bigNum(5e8);
+        const p1Bet = bigNum(web3.utils.toWei('0.5', "Gwei"));
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
 
@@ -267,8 +281,8 @@ contract('RockPaperScissors', function(accounts){
     });
 
     it ("Withdrawal works.", async() => {
-        const initialDeposit = bigNum(1e10);
-        const withdrawAmount = bigNum(9e9);
+        const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
+        const withdrawAmount = bigNum(web3.utils.toWei('9', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         
         // Check that cannot withdraw greater than deposit.
@@ -279,7 +293,7 @@ contract('RockPaperScissors', function(accounts){
 
         const txObjWithdraw = await rpsCont.withdraw(withdrawAmount, { from: player1 });
 
-        await truffleAssert.eventEmitted(txObjWithdraw, 'LogWithdraw');
+        assert.strictEqual(txObjWithdraw.logs[0].event, 'LogWithdraw', 'Wrong event emitted.');
         assert.strictEqual(txObjWithdraw.logs[0].args.sender, player1, 'Withdraw Log Sender Error');
         assert.strictEqual(txObjWithdraw.logs[0].args.amount.toString(10), withdrawAmount.toString(10), 'Withdraw Log Amont Error');
 
@@ -295,12 +309,12 @@ contract('RockPaperScissors', function(accounts){
     });
 
     it ("Cannot enrol with used-before hash.", async () => {
-        const initialDeposit = bigNum(1e10);
+        const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
 
         const p1Code = web3.utils.fromAscii(generator());
-        const p1Bet = bigNum(5e8);
+        const p1Bet = bigNum(web3.utils.toWei('0.5', "Gwei"));
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
 
@@ -333,12 +347,12 @@ contract('RockPaperScissors', function(accounts){
     });
 
     it ("Post-killing withdrawal moves funds to the owner correctly.", async () => {
-        const initialDeposit = bigNum(1e10);
+        const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
 
         const p1Code = web3.utils.fromAscii(generator());
-        const p1Bet = bigNum(5e8);
+        const p1Bet = bigNum(web3.utils.toWei('0.5', "Gwei"));
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
 
@@ -352,7 +366,7 @@ contract('RockPaperScissors', function(accounts){
         const davidBalBefore = bigNum(await web3.eth.getBalance(david));
         const txObjKW = await rpsCont.killedWithdrawal({ from: david });
 
-        await truffleAssert.eventEmitted(txObjKW, 'LogKilledWithdrawal');
+        assert.strictEqual(txObjKW.logs[0].event, 'LogKilledWithdrawal', 'Wrong event emitted.');
         assert.strictEqual(txObjKW.logs[0].args.sender, david, 'Killed Withdrawal Log Sender Error');
         assert.strictEqual(txObjKW.logs[0].args.amount.toString(10), initialDeposit.add(initialDeposit).toString(10), 'Killed Withdrawal Log Amount Error');
 
@@ -364,11 +378,11 @@ contract('RockPaperScissors', function(accounts){
     });
 
     it ("Post-killing contract functions revert upon invocation.", async () => {
-        const initialDeposit = bigNum(1e10);
+        const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
         const p1Code = web3.utils.fromAscii(generator());
-        const p1Bet = bigNum(5e8);
+        const p1Bet = bigNum(web3.utils.toWei('0.5', "Gwei"));
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         
         await rpsCont.pause({ from: david });		

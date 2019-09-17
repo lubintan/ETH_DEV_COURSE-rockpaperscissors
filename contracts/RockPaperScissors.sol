@@ -23,9 +23,9 @@ contract RockPaperScissors is Killable{
     Player player2;
     uint256 public constant playPeriod = 1 hours;
     uint256 public constant unlockPeriod = 2 hours;
-    uint256 playDeadline;
-    uint256 unlockDeadline;
-    address owner;
+    uint256 public playDeadline;
+    uint256 public unlockDeadline;
+    address public owner;
 
     // Remember to add in LogEvents.
     event LogDeposit(address indexed sender, uint256 amount);
@@ -33,6 +33,8 @@ contract RockPaperScissors is Killable{
     event LogEnrol(address indexed sender, uint256 indexed bet, bytes32 indexed entryHash);
     event LogPlay(address indexed sender, uint256 indexed bet, Action indexed move);
     event LogUnlock(address indexed sender, Action indexed move);
+    event LogWinnerFound(address indexed winner, address indexed loser, uint256 amount);
+    event LogDrawGame(address indexed player1, address indexed player2, uint256 amount);
     event LogCancelNoOpponent(address indexed sender);
     event LogCancelNoUnlock(address indexed sender);
     event LogTransferOwnership(address indexed owner, address indexed newOwner);
@@ -165,25 +167,24 @@ contract RockPaperScissors is Killable{
         whenNotPaused
         whenAlive
     {
-        int8 p1Move = int8(player1.move);
-        int8 p2Move = int8(player2.move);
         uint256 betSize = player1.bet; // player bets already forced to be equal.
         address p1Sender = player1.sender;
         address p2Sender = player2.sender;
 
-        if (p1Move == p2Move){
+        uint8 result = (3 + uint8(player1.move) - uint8(player2.move)) % 3;
+        if (result == 1){ // player 1 wins.
+            balances[p1Sender] = balances[p1Sender].add(betSize).add(betSize);
+            emit LogWinnerFound(p1Sender, p2Sender, betSize);
+
+        } else if (result == 2) { // player 2 wins.
+            balances[p2Sender] = balances[p2Sender].add(betSize).add(betSize);
+            emit LogWinnerFound(p2Sender, p1Sender, betSize);
+
+        } else { // draw.
             balances[p1Sender] = balances[p1Sender].add(betSize);
             balances[p2Sender] = balances[p2Sender].add(betSize);
-
-        } else {
-            int8 result = p1Move - p2Move;
-            if ((result == 1) || (result == -2)){
-                balances[p1Sender] = balances[p1Sender].add(betSize).add(betSize);
-            } else {
-                balances[p2Sender] = balances[p2Sender].add(betSize).add(betSize);
-            }
+            emit LogDrawGame(p1Sender, p2Sender, betSize);
         }
-        // Log
         // Game complete. Reset Game.
         resetGame();
     }
