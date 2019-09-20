@@ -41,11 +41,7 @@ contract RockPaperScissors is Ownable{
 
     using SafeMath for uint256;
 
-    constructor()
-    public
-    {
-        owner = msg.sender;
-    }
+    constructor() public {}
 
     function deposit()
         public

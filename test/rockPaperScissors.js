@@ -378,7 +378,7 @@ contract('RockPaperScissors', function(accounts){
     });
 
     it ("Transfer Ownership sets owner to new owner.", async function() {
-        const currentOwner = await rpsCont.owner.call({ from: owner });
+        const currentOwner = await rpsCont.getOwner.call({ from: owner });
         assert.strictEqual(currentOwner, owner, "Owner not as expected.");
 
         // Check that non-owner cannot transfer ownership.
@@ -392,6 +392,9 @@ contract('RockPaperScissors', function(accounts){
         assert.strictEqual(txObjTransfer.logs[1].event, 'LogTransferOwnership', 'Wrong event emitted.');
         assert.strictEqual(txObjTransfer.logs[1].args.owner, owner, 'Transfer Ownership Log Old Owner Error');
         assert.strictEqual(txObjTransfer.logs[1].args.newOwner, player1, 'Transfer Ownership Log New Owner Error');
+
+        const newOwner = await rpsCont.getOwner.call({ from: owner });
+        assert.strictEqual(newOwner, player1, "Ownership not transferred correctly.");
     });
 
     it ("Post-killing contract functions revert upon invocation.", async function() {

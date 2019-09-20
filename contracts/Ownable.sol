@@ -3,12 +3,19 @@ pragma solidity ^0.5.10;
 import './Killable.sol';
 
 contract Ownable is Killable {
-    address public owner;
 
+    address private owner;
     event LogTransferOwnership(address indexed owner, address indexed newOwner);
 
     constructor () internal {
         owner = msg.sender;
+    }
+
+    function getOwner()
+        public
+        returns (address)
+    {
+        return owner;
     }
 
     modifier onlyOwner()
