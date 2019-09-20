@@ -386,12 +386,12 @@ contract('RockPaperScissors', function(accounts){
 
         const txObjTransfer = await rpsCont.transferOwnership(player1, { from: owner });
 
-        assert.strictEqual(txObjTransfer.logs[0].event, 'PauserAdded', 'Wrong event emitted');
-        assert.strictEqual(txObjTransfer.logs[0].args.account, player1, 'Pauser Log New Pauser Error');
+        assert.strictEqual(txObjTransfer.logs[0].event, 'LogTransferOwnership', 'Wrong event emitted.');
+        assert.strictEqual(txObjTransfer.logs[0].args.owner, owner, 'Transfer Ownership Log Old Owner Error');
+        assert.strictEqual(txObjTransfer.logs[0].args.newOwner, player1, 'Transfer Ownership Log New Owner Error');
 
-        assert.strictEqual(txObjTransfer.logs[1].event, 'LogTransferOwnership', 'Wrong event emitted.');
-        assert.strictEqual(txObjTransfer.logs[1].args.owner, owner, 'Transfer Ownership Log Old Owner Error');
-        assert.strictEqual(txObjTransfer.logs[1].args.newOwner, player1, 'Transfer Ownership Log New Owner Error');
+        assert.strictEqual(txObjTransfer.logs[1].event, 'PauserAdded', 'Wrong event emitted');
+        assert.strictEqual(txObjTransfer.logs[1].args.account, player1, 'Pauser Log New Pauser Error');
 
         const newOwner = await rpsCont.getOwner.call({ from: owner });
         assert.strictEqual(newOwner, player1, "Ownership not transferred correctly.");

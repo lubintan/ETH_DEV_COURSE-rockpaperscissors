@@ -2,7 +2,7 @@ pragma solidity ^0.5.10;
 
 import './Killable.sol';
 
-contract Ownable is Killable {
+contract Ownable {
 
     address private owner;
     event LogTransferOwnership(address indexed owner, address indexed newOwner);
@@ -13,6 +13,7 @@ contract Ownable is Killable {
 
     function getOwner()
         public
+        view
         returns (address)
     {
         return owner;
@@ -26,14 +27,9 @@ contract Ownable is Killable {
 
     function transferOwnership(address newOwner)
         public
-        whenAlive
         onlyOwner
     {
         require (newOwner != address(0), 'New owner cannot be non-existent.');
-
-        if (!isPauser(newOwner)){
-            addPauser(newOwner);
-        }
 
         emit LogTransferOwnership(owner, newOwner);
         owner = newOwner;

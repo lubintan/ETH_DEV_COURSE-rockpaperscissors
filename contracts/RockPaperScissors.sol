@@ -2,7 +2,7 @@ pragma solidity 0.5.10;
 
 import './Ownable.sol';
 
-contract RockPaperScissors is Ownable{
+contract RockPaperScissors is Ownable, Killable {
 
     enum Action
     {
@@ -232,6 +232,17 @@ contract RockPaperScissors is Ownable{
         returns (bytes32)
     {
         return keccak256(abi.encodePacked(code, move, address(this), msg.sender));
+    }
+
+    function transferOwnership(address newOwner)
+        public
+        whenAlive
+    {
+        Ownable.transferOwnership(newOwner);
+
+        if (!isPauser(newOwner)){
+            addPauser(newOwner);
+        }
     }
 
     function killedWithdrawal()
