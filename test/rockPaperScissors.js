@@ -33,13 +33,13 @@ contract('RockPaperScissors', function(accounts){
     const [nothing, rock, paper, scissors, disallowed] = [0, 1, 2, 3, 4];
     let rpsCont, playPeriod, unlockPeriod;
     
-    beforeEach("new contract deployment", async () => {
+    beforeEach("new contract deployment", async function() {
         rpsCont = await RockPaperScissors.new({ from: owner });
         playPeriod = bigNum(await rpsCont.playPeriod.call({ from: owner })).toNumber();
         unlockPeriod = bigNum(await rpsCont.unlockPeriod.call({ from: owner})).toNumber();
     });
 
-    it ("Rejects ineligible move.", async() => {
+    it ("Rejects ineligible move.", async function() {
         const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
@@ -56,7 +56,7 @@ contract('RockPaperScissors', function(accounts){
         await truffleAssert.reverts(rpsCont.play(p2Bet, disallowed, { from: player2 }));
     });
 
-    it ("Reverts when Player 2 plays with different bet.", async () => {
+    it ("Reverts when Player 2 plays with different bet.", async function() {
         const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
@@ -73,7 +73,7 @@ contract('RockPaperScissors', function(accounts){
         await truffleAssert.reverts(rpsCont.play(p2Bet, rock, { from: player2 }));
     });
 
-    it ("Player 1 can cancel if no opponent shows up within play deadline.", async() => {
+    it ("Player 1 can cancel if no opponent shows up within play deadline.", async function() {
         const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         
@@ -102,7 +102,7 @@ contract('RockPaperScissors', function(accounts){
 
     });
 
-    it ("Player 2 can claim bets if Player 1 does not unlock within unlock deadline.", async() => {
+    it ("Player 2 can claim bets if Player 1 does not unlock within unlock deadline.", async function() {
         const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
@@ -132,7 +132,7 @@ contract('RockPaperScissors', function(accounts){
             p2After.sub(p1Bet).sub(p2Bet).toString(10), "Player 2's expected contract balance incorrect.");
     });
 
-    it ("Funds moved correctly for game resulting in win-lose.", async() => {
+    it ("Funds moved correctly for game resulting in win-lose.", async function() {
         const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         const txObjDeposit = await rpsCont.deposit({ from: player2, value: initialDeposit});
@@ -197,7 +197,7 @@ contract('RockPaperScissors', function(accounts){
         await rpsCont.enrol(p2Hash, newBet, { from: player2 });
     });
 
-    it ("Funds moved correctly for game resulting in draw.", async() => {
+    it ("Funds moved correctly for game resulting in draw.", async function() {
         const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
@@ -243,7 +243,7 @@ contract('RockPaperScissors', function(accounts){
             p2After.toString(10), "Player 2's final expected contract balance incorrect.");
     });
 
-    it ("Game in progress can run properly after pausing and unpausing", async() => {
+    it ("Game in progress can run properly after pausing and unpausing", async function() {
         const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
@@ -280,7 +280,7 @@ contract('RockPaperScissors', function(accounts){
 
     });
 
-    it ("Withdrawal works.", async() => {
+    it ("Withdrawal works.", async function() {
         const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         const withdrawAmount = bigNum(web3.utils.toWei('9', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
@@ -308,7 +308,7 @@ contract('RockPaperScissors', function(accounts){
             player1ContAft.toString(10), "Player's expected contract balance incorrect.");
     });
 
-    it ("Cannot enrol with used-before hash.", async () => {
+    it ("Cannot enrol with used-before hash.", async function() {
         const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
@@ -325,28 +325,28 @@ contract('RockPaperScissors', function(accounts){
         await truffleAssert.reverts(rpsCont.enrol(p1Hash, p1Bet, { from: player1 }));
     });
 
-    it ("Reverts killing when contract is not paused.", async () => {
+    it ("Reverts killing when contract is not paused.", async function() {
         await truffleAssert.reverts(rpsCont.kill({ from: owner }));
     });
 
-    it ("Reverts killing by non-pauser/owner.", async () => {
+    it ("Reverts killing by non-pauser/owner.", async function() {
         await rpsCont.pause( {from: owner });
         await truffleAssert.reverts(rpsCont.kill({ from: player1 }));
     });
 
-    it ("Reverts post-killing withdrawal by non-owner.", async () => {
+    it ("Reverts post-killing withdrawal by non-owner.", async function() {
         await rpsCont.pause( {from: owner });
         await rpsCont.kill( {from: owner });
         await truffleAssert.reverts(rpsCont.killedWithdrawal({ from: player1 }));
     });
 
-    it ("Reverts post-killing withdrawal of 0 balance.", async () => {
+    it ("Reverts post-killing withdrawal of 0 balance.", async function() {
         await rpsCont.pause({ from: owner });
         await rpsCont.kill({ from: owner });
         await truffleAssert.reverts(rpsCont.killedWithdrawal({ from: owner }));
     });
 
-    it ("Post-killing withdrawal moves funds to the owner correctly.", async () => {
+    it ("Post-killing withdrawal moves funds to the owner correctly.", async function() {
         const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
@@ -377,7 +377,7 @@ contract('RockPaperScissors', function(accounts){
             ownerBalAfter.sub(initialDeposit).sub(initialDeposit).toString(10), "Owner's expected balance incorrect.");
     });
 
-    it ("Transfer Ownership sets owner to new owner.", async () => {
+    it ("Transfer Ownership sets owner to new owner.", async function() {
         const currentOwner = await rpsCont.owner.call({ from: owner });
         assert.strictEqual(currentOwner, owner, "Owner not as expected.");
 
@@ -394,7 +394,7 @@ contract('RockPaperScissors', function(accounts){
         assert.strictEqual(txObjTransfer.logs[1].args.newOwner, player1, 'Transfer Ownership Log New Owner Error');
     });
 
-    it ("Post-killing contract functions revert upon invocation.", async () => {
+    it ("Post-killing contract functions revert upon invocation.", async function() {
         const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});
         await rpsCont.deposit({ from: player2, value: initialDeposit});
