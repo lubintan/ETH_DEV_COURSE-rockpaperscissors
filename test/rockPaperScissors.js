@@ -239,6 +239,71 @@ contract('RockPaperScissors', function(accounts){
             p2After.toString(10), "Player 2's final expected contract balance incorrect.");
     });
 
+    it ("Enrol and Play functions allow for deposits if msg.value is sent along with it.", async function() {
+        const p1Before = bigNum(await rpsCont.getBalance({ from: player1 }));
+        const p2Before = bigNum(await rpsCont.getBalance({ from: player2 }));
+        
+        const initialDepositP1 = bigNum(web3.utils.toWei('10', "Gwei"));
+        const p1Code = web3.utils.fromAscii(generator());
+        const p1Bet = bigNum(web3.utils.toWei('0.5', "Gwei"));
+        const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
+        const txObjEnrol = await rpsCont.enrol(p1Hash, p1Bet, { from: player1, value: initialDepositP1 });
+
+        assert.strictEqual(txObjEnrol.logs[0].event, 'LogDeposit', 'Wrong event emitted.');
+        assert.strictEqual(txObjEnrol.logs[0].args.sender, player1, 'Deposit Log Sender Error');
+        assert.strictEqual(txObjEnrol.logs[0].args.amount.toString(10), initialDepositP1.toString(10), 'Deposit Log Amount Error');
+
+        assert.strictEqual(txObjEnrol.logs[1].event, 'LogEnrol', 'Wrong event emitted.');
+        assert.strictEqual(txObjEnrol.logs[1].args.sender, player1, 'Enrol Log Sender Error');
+        assert.strictEqual(txObjEnrol.logs[1].args.bet.toString(10), p1Bet.toString(10), 'Enrol Log Bet Error');
+        assert.strictEqual(txObjEnrol.logs[1].args.entryHash, p1Hash, 'Enrol Log Entry Hash Error');
+
+        const initialDepositP2 = bigNum(web3.utils.toWei('5', "Gwei"));
+        const txObjPlay = await rpsCont.play(paper, { from: player2, value: initialDepositP2 });
+
+        assert.strictEqual(txObjPlay.logs[0].event, 'LogDeposit', 'Wrong event emitted.');
+        assert.strictEqual(txObjPlay.logs[0].args.sender, player2, 'Deposit Log Sender Error');
+        assert.strictEqual(txObjPlay.logs[0].args.amount.toString(10), initialDepositP2.toString(10), 'Deposit Log Amount Error');
+
+        assert.strictEqual(txObjPlay.logs[1].event, 'LogPlay', 'Wrong event emitted.');
+        assert.strictEqual(txObjPlay.logs[1].args.sender, player2, 'Play Log Sender Error');
+        assert.strictEqual(txObjPlay.logs[1].args.bet.toString(10), p1Bet.toString(10), 'Play Log Bet Error');
+        assert.strictEqual(txObjPlay.logs[1].args.move.toNumber(), paper, 'Play Log Move Error');
+
+        const txObjUnlock = await rpsCont.unlock(p1Code, rock, { from: player1 });
+
+        const p1After = bigNum(await rpsCont.getBalance({ from: player1 }));
+        const p2After = bigNum(await rpsCont.getBalance({ from: player2 }));
+
+        assert.strictEqual(p1Before.add(initialDepositP1).sub(p1Bet).toString(10),
+            p1After.toString(10), "Player 1's final expected contract balance incorrect.");
+
+        assert.strictEqual(p2Before.add(initialDepositP2).add(p1Bet).toString(10),
+            p2After.toString(10), "Player 2's final expected contract balance incorrect.");
+    });
+
+    it ("Can enrol and play with 0 deposit if bet value is 0.", async function() {
+        const p1Before = bigNum(await rpsCont.getBalance({ from: player1 }));
+        const p2Before = bigNum(await rpsCont.getBalance({ from: player2 }));
+        
+        const p1Code = web3.utils.fromAscii(generator());
+        const p1Bet = bigNum(0);
+        const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
+        
+        await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
+        await rpsCont.play(paper, { from: player2 });
+        await rpsCont.unlock(p1Code, rock, { from: player1 });
+
+        const p1After = bigNum(await rpsCont.getBalance({ from: player1 }));
+        const p2After = bigNum(await rpsCont.getBalance({ from: player2 }));
+
+        assert.strictEqual(p1Before.toString(10),
+            p1After.toString(10), "Player 1's final expected contract balance incorrect.");
+
+        assert.strictEqual(p2Before.toString(10),
+            p2After.toString(10), "Player 2's final expected contract balance incorrect.");
+    });
+
     it ("Game in progress can run properly after pausing and unpausing", async function() {
         const initialDeposit = bigNum(web3.utils.toWei('10', "Gwei"));
         await rpsCont.deposit({ from: player1, value: initialDeposit});

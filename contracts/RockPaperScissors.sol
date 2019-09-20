@@ -89,9 +89,14 @@ contract RockPaperScissors is Ownable, Killable {
 
     function enrol(bytes32 entryHash, uint256 newBet)
         public
+        payable
         whenNotPaused
         whenAlive
     {
+        if (msg.value > 0){
+            deposit();
+        }
+
         require(msg.sender != address(0), "Player error.");
         require(player1.sender == address(0), 'Player 1 taken. Use "play" to play against player 1');
         require(player2.sender == address(0), 'Game in progress');
@@ -111,9 +116,14 @@ contract RockPaperScissors is Ownable, Killable {
 
     function play(Action move)
         public
+        payable
         whenNotPaused
         whenAlive
     {
+        if (msg.value > 0){
+            deposit();
+        }
+
         require(msg.sender != address(0), "Player error.");
         require(player1.sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
         require(player2.sender == address(0), 'Game in progress');
