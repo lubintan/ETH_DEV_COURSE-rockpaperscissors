@@ -34,6 +34,7 @@ contract('RockPaperScissors', function(accounts){
     
     const [player1, player2, owner] = accounts;
     const [nothing, rock, paper, scissors, disallowed, disallowedBig] = [0, 1, 2, 3, 4, 948896921];
+    const [notInPlay, waitingForJoin, waitingForPlay, waitingForUnlock] = [0, 1, 2, 3];
     const initialDeposit = toBN(toWei('10', "Gwei"));
     const p1Code = fromAscii(generator());
     const p1Bet = toBN(toWei('0.5', "Gwei"));
@@ -62,6 +63,7 @@ contract('RockPaperScissors', function(accounts){
             await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
             await rpsCont.join({ from: player2 });
     
+            await truffleAssert.reverts(rpsCont.play(nothing, { from: player2 }));
             await truffleAssert.fails(rpsCont.play(disallowed, { from: player2 }));
             await truffleAssert.fails(rpsCont.play(disallowedBig, { from: player2 }));
         });
@@ -151,6 +153,10 @@ contract('RockPaperScissors', function(accounts){
 
         it ("Funds moved correctly for game resulting in win-lose.", async function() {
             const txObjDeposit = await rpsCont.deposit({ from: player2, value: initialDeposit});
+
+            //Check game status
+            const statusNotInPlay = await rpsCont.status.call({ from: player2 });
+            assert.strictEqual(statusNotInPlay.toNumber(), notInPlay, 'Game Status - NotInPlay Error');
             
             const depositEvent = txObjDeposit.logs[0];
             assert.strictEqual(depositEvent.event, 'LogDeposit', 'Wrong event emitted.');
@@ -167,6 +173,10 @@ contract('RockPaperScissors', function(accounts){
             assert.strictEqual(enrolEvent.args.sender, player1, 'Enrol Log Sender Error');
             assert.strictEqual(enrolEvent.args.bet.toString(10), p1Bet.toString(10), 'Enrol Log Bet Error');
             assert.strictEqual(enrolEvent.args.entryHash, p1Hash, 'Enrol Log Entry Hash Error');
+
+            //Check game status
+            const statusWaitingForJoin = await rpsCont.status.call({ from: player2 });
+            assert.strictEqual(statusWaitingForJoin.toNumber(), waitingForJoin, 'Game Status - WaitingForJoin Error');
     
             const txObjJoin = await rpsCont.join({ from: player2 });
 
@@ -174,12 +184,20 @@ contract('RockPaperScissors', function(accounts){
             assert.strictEqual(joinEvent.event, 'LogJoin', 'Wrong event emitted.');
             assert.strictEqual(joinEvent.args.sender, player2, 'Join Log Sender Error');
 
+            //Check game status
+            const statusWaitingForPlay = await rpsCont.status.call({ from: player2 });
+            assert.strictEqual(statusWaitingForPlay.toNumber(), waitingForPlay, 'Game Status - WaitingForPlay Error');
+
             const txObjPlay = await rpsCont.play(paper, { from: player2 });
     
             const playEvent = txObjPlay.logs[0];
             assert.strictEqual(playEvent.event, 'LogPlay', 'Wrong event emitted.');
             assert.strictEqual(playEvent.args.sender, player2, 'Play Log Sender Error');
             assert.strictEqual(playEvent.args.move.toNumber(), paper, 'Play Log Move Error');
+
+            //Check game status
+            const statusWaitingForUnlock = await rpsCont.status.call({ from: player2 });
+            assert.strictEqual(statusWaitingForUnlock.toNumber(), waitingForUnlock, 'Game Status - WaitingForUnlock Error');
     
             // Check that player 2 cannot unlock using player 1's code and move.
             await truffleAssert.reverts(rpsCont.unlock(p1Code, rock, { from: player2 }));
@@ -208,6 +226,10 @@ contract('RockPaperScissors', function(accounts){
     
             assert.strictEqual(p2Before.toString(10),
                 p2After.sub(p1Bet).toString(10), "Player 2's expected contract balance incorrect.");
+
+            //Check game status
+            const postGameNotInPlay = await rpsCont.status.call({ from: player2 });
+            assert.strictEqual(postGameNotInPlay.toNumber(), notInPlay, 'Post Game Status - NotInPlay Error');
     
             // Winner can use earnings to place bigger bet.
     

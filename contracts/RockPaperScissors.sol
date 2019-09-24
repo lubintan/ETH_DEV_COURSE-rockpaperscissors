@@ -9,6 +9,11 @@ contract RockPaperScissors is Ownable, Killable {
         Null, Rock, Paper, Scissors
     }
 
+    enum Status
+    {
+        NotInPlay, WaitingForJoin, WaitingForPlay, WaitingForUnlock
+    }
+
     struct Player
     {
         bytes32 entryHash;
@@ -20,6 +25,7 @@ contract RockPaperScissors is Ownable, Killable {
     mapping (bytes32 => bool) usedHashes;
     Player player1;
     Player player2;
+    Status public status;
     uint256 bet;
     uint256 public constant joinPeriod = 1 hours;
     uint256 public constant playPeriod = 1 hours;
@@ -111,6 +117,7 @@ contract RockPaperScissors is Ownable, Killable {
         joinDeadline = now.add(playPeriod);
 
         emit LogEnrol(msg.sender, newBet, entryHash);
+        status = Status.WaitingForJoin;
 
         usedHashes[entryHash] = true;
     }
@@ -133,6 +140,7 @@ contract RockPaperScissors is Ownable, Killable {
         playDeadline = now.add(playPeriod);
 
         emit LogJoin(msg.sender);
+        status = Status.WaitingForPlay;
     }
 
     function play(Action move)
@@ -147,6 +155,7 @@ contract RockPaperScissors is Ownable, Killable {
         unlockDeadline = now.add(unlockPeriod);
 
         emit LogPlay(msg.sender, move);
+        status = Status.WaitingForUnlock;
     }
 
     function unlock(bytes32 code, Action move)
@@ -252,6 +261,8 @@ contract RockPaperScissors is Ownable, Killable {
         joinDeadline = 0;
         playDeadline = 0;
         unlockDeadline = 0;
+
+        status = Status.NotInPlay;
     }
 
     function hashIt(bytes32 code, Action move)
