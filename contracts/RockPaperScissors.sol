@@ -14,17 +14,12 @@ contract RockPaperScissors is Ownable, Killable {
         NotInPlay, WaitingForJoin, WaitingForPlay, WaitingForUnlock
     }
 
-    struct Player
-    {
-        bytes32 entryHash;
-        address sender;
-        Action move;
-    }
-
     mapping (address => uint256) balances;
     mapping (bytes32 => bool) usedHashes;
-    Player player1;
-    Player player2;
+    bytes32 player1EntryHash;
+    address player1Sender;
+    Action player2Move;
+    address player2Sender;
     Status public status;
     uint256 bet;
     uint256 public constant joinPeriod = 1 hours;
@@ -92,7 +87,7 @@ contract RockPaperScissors is Ownable, Killable {
         whenAlive
         returns (uint256)
     {
-        require(player1.sender != address(0), 'No current player.');
+        require(player1Sender != address(0), 'No current player.');
         return bet;
     }
 
@@ -106,14 +101,14 @@ contract RockPaperScissors is Ownable, Killable {
             emit LogDeposit(msg.sender, msg.value);
         }
 
-        require(player1.sender == address(0), 'Player 1 taken.');
-        require(player2.sender == address(0), 'Game in progress');
+        require(player1Sender == address(0), 'Player 1 taken.');
+        require(player2Sender == address(0), 'Game in progress');
         require(!usedHashes[entryHash], 'Cannot re-use hash.');
 
         balances[msg.sender] = balances[msg.sender].add(msg.value).sub(newBet);
         bet = newBet;
-        player1.entryHash = entryHash;
-        player1.sender = msg.sender;
+        player1EntryHash = entryHash;
+        player1Sender = msg.sender;
         joinDeadline = now.add(playPeriod);
 
         emit LogEnrol(msg.sender, newBet, entryHash);
@@ -128,14 +123,14 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(player1.sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
-        require(player2.sender == address(0), 'Game in progress');
+        require(player1Sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
+        require(player2Sender == address(0), 'Game in progress');
 
         if (msg.value > 0){
             emit LogDeposit(msg.sender, msg.value);
         }
 
-        player2.sender = msg.sender;
+        player2Sender = msg.sender;
         balances[msg.sender] = balances[msg.sender].add(msg.value).sub(bet);
         playDeadline = now.add(playPeriod);
 
@@ -148,10 +143,10 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(player2.sender == msg.sender, "You have not joined the game.");
+        require(player2Sender == msg.sender, "You have not joined the game.");
         require(move != Action.Null, 'Ineligible move.');
 
-        player2.move = move;
+        player2Move = move;
         unlockDeadline = now.add(unlockPeriod);
 
         emit LogPlay(msg.sender, move);
@@ -163,11 +158,10 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(player1.sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
-        require(player2.move != Action.Null, 'Cannot unlock before player 2 has played.');
+        require(player1Sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
+        require(player2Move != Action.Null, 'Cannot unlock before player 2 has played.');
         require(move != Action.Null, 'Ineligible move.');
-        require(hashIt(code, move) == player1.entryHash, 'Unverified move.');
-        require(player1.move == Action.Null, 'Cannot re-play move.');
+        require(hashIt(code, move) == player1EntryHash, 'Unverified move.');
 
         emit LogUnlock(msg.sender, move);
         evaluate(move);
@@ -179,10 +173,10 @@ contract RockPaperScissors is Ownable, Killable {
         whenAlive
     {
         uint256 betSize = bet;
-        address p1Sender = player1.sender;
-        address p2Sender = player2.sender;
+        address p1Sender = player1Sender;
+        address p2Sender = player2Sender;
 
-        uint8 result = (3 + uint8(p1Move) - uint8(player2.move)) % 3;
+        uint8 result = (3 + uint8(p1Move) - uint8(player2Move)) % 3;
         if (result == 1){ // player 1 wins.
             balances[p1Sender] = balances[p1Sender].add(betSize.mul(2));
             emit LogWinnerFound(p1Sender, p2Sender, betSize);
@@ -205,8 +199,8 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(msg.sender == player1.sender, 'Not currently enrolled.');
-        require(player2.sender == address(0), 'Opponent exists.');
+        require(msg.sender == player1Sender, 'Not currently enrolled.');
+        require(player2Sender == address(0), 'Opponent exists.');
         require(now > joinDeadline, 'Join period not expired.');
 
         balances[msg.sender] = balances[msg.sender].add(bet);
@@ -219,9 +213,9 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(msg.sender == player1.sender, 'Not currently enrolled.');
-        require(player2.sender != address(0), 'No opponent. Use CancelNoJoin to cancel.');
-        require(player2.move == Action.Null, 'Not allowed. Please unlock your move.');
+        require(msg.sender == player1Sender, 'Not currently enrolled.');
+        require(player2Sender != address(0), 'No opponent. Use CancelNoJoin to cancel.');
+        require(player2Move == Action.Null, 'Not allowed. Please unlock your move.');
         require(now > playDeadline, 'Play period not expired.');
 
         balances[msg.sender] = balances[msg.sender].add(bet.mul(2));
@@ -235,8 +229,7 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(msg.sender == player2.sender, 'Only player 2 allowed to call this function.');
-        require(player1.move == Action.Null, 'Player 1 already unlocked their move.');
+        require(msg.sender == player2Sender, 'Only player 2 allowed to call this function.');
         require(now > unlockDeadline, 'Unlock period not expired.');
 
         balances[msg.sender] = balances[msg.sender].add(bet.mul(2));
@@ -249,13 +242,11 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        player1.entryHash = 0;
-        player1.sender = address(0);
-        player1.move = Action.Null;
+        player1EntryHash = 0;
+        player1Sender = address(0);
 
-        player2.entryHash = 0;
-        player2.sender = address(0);
-        player2.move = Action.Null;
+        player2Sender = address(0);
+        player2Move = Action.Null;
 
         bet = 0;
         joinDeadline = 0;

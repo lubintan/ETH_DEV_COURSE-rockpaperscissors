@@ -202,7 +202,7 @@ contract('RockPaperScissors', function(accounts){
             // Check that player 2 cannot unlock using player 1's code and move.
             await truffleAssert.reverts(rpsCont.unlock(p1Code, rock, { from: player2 }));
     
-            // Check that player cannot change their submitted move.
+            // Check that player 1 cannot change their submitted move.
             await truffleAssert.reverts(rpsCont.unlock(p1Code, scissors, { from: player1 }));
     
             const txObjUnlock = await rpsCont.unlock(p1Code, rock, { from: player1 });
@@ -217,6 +217,9 @@ contract('RockPaperScissors', function(accounts){
             assert.strictEqual(unlockEvent2.args.winner, player2, 'Winner Found Log Winner Error');
             assert.strictEqual(unlockEvent2.args.loser, player1, 'Winner Found Log Loser Error');
             assert.strictEqual(unlockEvent2.args.amount.toString(10), p1Bet.toString(10), 'Winner Found Log Amount Error');
+
+            // Check that player 1 cannot re-unlock their move.
+            await truffleAssert.reverts(rpsCont.unlock(p1Code, rock, { from: player1 }));
     
             const p1After = toBN(await rpsCont.getBalance({ from: player1 }));
             const p2After = toBN(await rpsCont.getBalance({ from: player2 }));
