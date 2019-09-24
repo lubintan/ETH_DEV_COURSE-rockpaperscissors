@@ -21,8 +21,10 @@ contract RockPaperScissors is Ownable, Killable {
     Player player1;
     Player player2;
     uint256 bet;
+    uint256 public constant joinPeriod = 1 hours;
     uint256 public constant playPeriod = 1 hours;
     uint256 public constant unlockPeriod = 2 hours;
+    uint256 public joinDeadline;
     uint256 public playDeadline;
     uint256 public unlockDeadline;
 
@@ -30,11 +32,13 @@ contract RockPaperScissors is Ownable, Killable {
     event LogDeposit(address indexed sender, uint256 amount);
     event LogWithdraw(address indexed sender, uint256 amount);
     event LogEnrol(address indexed sender, uint256 indexed bet, bytes32 indexed entryHash);
-    event LogPlay(address indexed sender, uint256 indexed bet, Action indexed move);
+    event LogJoin(address indexed sender);
+    event LogPlay(address indexed sender, Action indexed move);
     event LogUnlock(address indexed sender, Action indexed move);
     event LogWinnerFound(address indexed winner, address indexed loser, uint256 amount);
     event LogDrawGame(address indexed player1, address indexed player2, uint256 amount);
-    event LogCancelNoOpponent(address indexed sender);
+    event LogCancelNoJoin(address indexed sender);
+    event LogCancelNoPlay(address indexed sender);
     event LogCancelNoUnlock(address indexed sender);
     event LogKilledWithdrawal(address indexed sender, uint256 amount);
 
@@ -96,8 +100,7 @@ contract RockPaperScissors is Ownable, Killable {
             emit LogDeposit(msg.sender, msg.value);
         }
 
-        require(msg.sender != address(0), "Player error."); //EXPLAIN!
-        require(player1.sender == address(0), 'Player 1 taken. Use "play" to play against player 1');
+        require(player1.sender == address(0), 'Player 1 taken.');
         require(player2.sender == address(0), 'Game in progress');
         require(!usedHashes[entryHash], 'Cannot re-use hash.');
 
@@ -105,35 +108,45 @@ contract RockPaperScissors is Ownable, Killable {
         bet = newBet;
         player1.entryHash = entryHash;
         player1.sender = msg.sender;
-        playDeadline = now.add(playPeriod);
+        joinDeadline = now.add(playPeriod);
 
         emit LogEnrol(msg.sender, newBet, entryHash);
 
         usedHashes[entryHash] = true;
     }
 
-    function play(Action move)
+    function join()
         public
         payable
         whenNotPaused
         whenAlive
     {
+        require(player1.sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
+        require(player2.sender == address(0), 'Game in progress');
+
         if (msg.value > 0){
             emit LogDeposit(msg.sender, msg.value);
         }
 
-        require(msg.sender != address(0), "Player error.");
-        require(player1.sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
-        require(player2.sender == address(0), 'Game in progress');
+        player2.sender = msg.sender;
+        balances[msg.sender] = balances[msg.sender].add(msg.value).sub(bet);
+        playDeadline = now.add(playPeriod);
+
+        emit LogJoin(msg.sender);
+    }
+
+    function play(Action move)
+        public
+        whenNotPaused
+        whenAlive
+    {
+        require(player2.sender == msg.sender, "You have not joined the game.");
         require(move != Action.Null, 'Ineligible move.');
 
-        uint256 currentBet = bet;
-        balances[msg.sender] = balances[msg.sender].add(msg.value).sub(currentBet);
         player2.move = move;
-        player2.sender = msg.sender;
         unlockDeadline = now.add(unlockPeriod);
 
-        emit LogPlay(msg.sender, currentBet, move);
+        emit LogPlay(msg.sender, move);
     }
 
     function unlock(bytes32 code, Action move)
@@ -141,7 +154,6 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(msg.sender != address(0), "Player error.");
         require(player1.sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
         require(player2.move != Action.Null, 'Cannot unlock before player 2 has played.');
         require(move != Action.Null, 'Ineligible move.');
@@ -179,19 +191,35 @@ contract RockPaperScissors is Ownable, Killable {
         resetGame();
     }
 
-    function cancelNoOpponent()
+    function cancelNoJoin()
         public
         whenNotPaused
         whenAlive
     {
         require(msg.sender == player1.sender, 'Not currently enrolled.');
         require(player2.sender == address(0), 'Opponent exists.');
-        require(now > playDeadline, 'Enrol period not expired');
+        require(now > joinDeadline, 'Join period not expired.');
 
         balances[msg.sender] = balances[msg.sender].add(bet);
         resetGame();
-        emit LogCancelNoOpponent(msg.sender);
+        emit LogCancelNoJoin(msg.sender);
     }
+
+    function cancelNoPlay()
+        public
+        whenNotPaused
+        whenAlive
+    {
+        require(msg.sender == player1.sender, 'Not currently enrolled.');
+        require(player2.sender != address(0), 'No opponent. Use CancelNoJoin to cancel.');
+        require(player2.move == Action.Null, 'Not allowed. Please unlock your move.');
+        require(now > playDeadline, 'Play period not expired.');
+
+        balances[msg.sender] = balances[msg.sender].add(bet.mul(2));
+        resetGame();
+        emit LogCancelNoPlay(msg.sender);
+    }
+
 
     function cancelNoUnlock()
         public
@@ -200,7 +228,7 @@ contract RockPaperScissors is Ownable, Killable {
     {
         require(msg.sender == player2.sender, 'Only player 2 allowed to call this function.');
         require(player1.move == Action.Null, 'Player 1 already unlocked their move.');
-        require(now > unlockDeadline, 'Play period not expired.');
+        require(now > unlockDeadline, 'Unlock period not expired.');
 
         balances[msg.sender] = balances[msg.sender].add(bet.mul(2));
         resetGame();
@@ -221,6 +249,7 @@ contract RockPaperScissors is Ownable, Killable {
         player2.move = Action.Null;
 
         bet = 0;
+        joinDeadline = 0;
         playDeadline = 0;
         unlockDeadline = 0;
     }
