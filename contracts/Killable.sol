@@ -13,7 +13,7 @@ contract Killable is Pausable{
 
     constructor () public {}
 
-    function getKilled()
+    function isKilled()
         public
         view  
         returns (bool)

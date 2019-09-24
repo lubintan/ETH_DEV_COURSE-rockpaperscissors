@@ -70,8 +70,7 @@ contract RockPaperScissors is Ownable, Killable {
         whenAlive
     {
         require(withdrawAmount > 0, "Nothing to withdraw");
-        uint256 currentBalance = balances[msg.sender];
-        balances[msg.sender] = currentBalance.sub(withdrawAmount);
+        balances[msg.sender] = balances[msg.sender].sub(withdrawAmount);
         emit LogWithdraw(msg.sender, withdrawAmount);
         msg.sender.transfer(withdrawAmount);
     }
@@ -94,16 +93,15 @@ contract RockPaperScissors is Ownable, Killable {
         whenAlive
     {
         if (msg.value > 0){
-            deposit();
+            emit LogDeposit(msg.sender, msg.value);
         }
 
-        require(msg.sender != address(0), "Player error.");
+        require(msg.sender != address(0), "Player error."); //EXPLAIN!
         require(player1.sender == address(0), 'Player 1 taken. Use "play" to play against player 1');
         require(player2.sender == address(0), 'Game in progress');
         require(!usedHashes[entryHash], 'Cannot re-use hash.');
 
-        uint256 currentBalance = balances[msg.sender];
-        balances[msg.sender] = currentBalance.sub(newBet);
+        balances[msg.sender] = balances[msg.sender].add(msg.value).sub(newBet);
         bet = newBet;
         player1.entryHash = entryHash;
         player1.sender = msg.sender;
@@ -121,7 +119,7 @@ contract RockPaperScissors is Ownable, Killable {
         whenAlive
     {
         if (msg.value > 0){
-            deposit();
+            emit LogDeposit(msg.sender, msg.value);
         }
 
         require(msg.sender != address(0), "Player error.");
@@ -130,7 +128,7 @@ contract RockPaperScissors is Ownable, Killable {
         require(move != Action.Null, 'Ineligible move.');
 
         uint256 currentBet = bet;
-        balances[msg.sender] = balances[msg.sender].sub(currentBet);
+        balances[msg.sender] = balances[msg.sender].add(msg.value).sub(currentBet);
         player2.move = move;
         player2.sender = msg.sender;
         unlockDeadline = now.add(unlockPeriod);
@@ -150,12 +148,11 @@ contract RockPaperScissors is Ownable, Killable {
         require(hashIt(code, move) == player1.entryHash, 'Unverified move.');
         require(player1.move == Action.Null, 'Cannot re-play move.');
 
-        player1.move = move;
         emit LogUnlock(msg.sender, move);
-        evaluate();
+        evaluate(move);
     }
 
-    function evaluate()
+    function evaluate(Action p1Move)
         internal
         whenNotPaused
         whenAlive
@@ -164,7 +161,7 @@ contract RockPaperScissors is Ownable, Killable {
         address p1Sender = player1.sender;
         address p2Sender = player2.sender;
 
-        uint8 result = (3 + uint8(player1.move) - uint8(player2.move)) % 3;
+        uint8 result = (3 + uint8(p1Move) - uint8(player2.move)) % 3;
         if (result == 1){ // player 1 wins.
             balances[p1Sender] = balances[p1Sender].add(betSize.mul(2));
             emit LogWinnerFound(p1Sender, p2Sender, betSize);
