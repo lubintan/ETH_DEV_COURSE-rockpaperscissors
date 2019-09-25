@@ -102,7 +102,6 @@ contract RockPaperScissors is Ownable, Killable {
         }
 
         require(player1Sender == address(0), 'Player 1 taken.');
-        require(player2Sender == address(0), 'Game in progress');
         require(!usedHashes[entryHash], 'Cannot re-use hash.');
 
         /* The null condition for players 1 and 2 in this contract is address(0).
