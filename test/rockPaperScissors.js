@@ -32,7 +32,7 @@ const timeTravel =  async function (duration) {
 
 contract('RockPaperScissors', function(accounts){
     
-    const [player1, player2, owner] = accounts;
+    const [player1, player2, player3, player4, owner] = accounts;
     const [nothing, rock, paper, scissors, disallowed, disallowedBig] = [0, 1, 2, 3, 4, 948896921];
     const [notInPlay, waitingForJoin, waitingForPlay, waitingForUnlock] = [0, 1, 2, 3];
     const initialDeposit = toBN(toWei('10', "Gwei"));
@@ -61,11 +61,11 @@ contract('RockPaperScissors', function(accounts){
             // Check that cannot enrol more than initial deposit.
             await truffleAssert.reverts(rpsCont.enrol(p1Hash, p1Bet.add(initialDeposit), { from: player1 }));
             await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
-            await rpsCont.join({ from: player2 });
+            await rpsCont.join(p1Hash, { from: player2 });
     
-            await truffleAssert.reverts(rpsCont.play(nothing, { from: player2 }));
-            await truffleAssert.fails(rpsCont.play(disallowed, { from: player2 }));
-            await truffleAssert.fails(rpsCont.play(disallowedBig, { from: player2 }));
+            await truffleAssert.reverts(rpsCont.play(p1Hash, nothing, { from: player2 }));
+            await truffleAssert.fails(rpsCont.play(p1Hash, disallowed, { from: player2 }));
+            await truffleAssert.fails(rpsCont.play(p1Hash, disallowedBig, { from: player2 }));
         });
 
         it ("Reverts when Player 2 joins with insufficient deposit.", async function() {
@@ -76,7 +76,7 @@ contract('RockPaperScissors', function(accounts){
             await truffleAssert.reverts(rpsCont.enrol(p1Hash, p1Bet.add(initialDeposit), { from: player1 }));
             await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
     
-            await truffleAssert.reverts(rpsCont.join({ from: player2 }));
+            await truffleAssert.reverts(rpsCont.join(p1Hash, { from: player2 }));
         });
 
         it ("Player 1 can cancel if no opponent shows up within join deadline.", async function() {            
@@ -84,15 +84,16 @@ contract('RockPaperScissors', function(accounts){
             await timeTravel(joinPeriod/2);
     
             // Check that cannot cancel before join deadline expiry.
-            await truffleAssert.reverts(rpsCont.cancelNoJoin({ from: player1 }));
+            await truffleAssert.reverts(rpsCont.cancelNoJoin(p1Hash, { from: player1 }));
     
             await timeTravel(joinPeriod);
     
             const p1Before = toBN(await rpsCont.getBalance({ from: player1 }));
-            const txObjCancel = await rpsCont.cancelNoJoin({ from: player1 });
+            const txObjCancel = await rpsCont.cancelNoJoin(p1Hash, { from: player1 });
     
             const cancelEvent = txObjCancel.logs[0];        
             assert.strictEqual(cancelEvent.event, 'LogCancelNoJoin', 'Wrong event emitted.');
+            assert.strictEqual(cancelEvent.args.entryHash, p1Hash, 'Wrong game entryHash.');
             assert.strictEqual(cancelEvent.args.sender, player1, 'Cancel No Join Log Sender Error');
     
             const p1After = toBN(await rpsCont.getBalance({ from: player1 }));
@@ -104,19 +105,20 @@ contract('RockPaperScissors', function(accounts){
 
         it ("Player 1 can cancel if Player 2 does not play within play deadline.", async function() {            
             await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
-            await rpsCont.join({ from: player2, value: p1Bet });
+            await rpsCont.join(p1Hash, { from: player2, value: p1Bet });
             await timeTravel(playPeriod/2);
     
             // Check that cannot cancel before play deadline expiry.
-            await truffleAssert.reverts(rpsCont.cancelNoPlay({ from: player1 }));
+            await truffleAssert.reverts(rpsCont.cancelNoPlay(p1Hash, { from: player1 }));
     
             await timeTravel(playPeriod);
     
             const p1Before = toBN(await rpsCont.getBalance({ from: player1 }));
-            const txObjCancel = await rpsCont.cancelNoPlay({ from: player1 });
+            const txObjCancel = await rpsCont.cancelNoPlay(p1Hash, { from: player1 });
     
             const cancelEvent = txObjCancel.logs[0];
             assert.strictEqual(cancelEvent.event, 'LogCancelNoPlay', 'Wrong event emitted.');
+            assert.strictEqual(cancelEvent.args.entryHash, p1Hash, 'Wrong game entryHash.');
             assert.strictEqual(cancelEvent.args.sender, player1, 'Cancel No Play Log Sender Error');
     
             const p1After = toBN(await rpsCont.getBalance({ from: player1 }));
@@ -129,20 +131,21 @@ contract('RockPaperScissors', function(accounts){
         it ("Player 2 can claim bets if Player 1 does not unlock within unlock deadline.", async function() {
             await rpsCont.deposit({ from: player2, value: initialDeposit});
             await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
-            await rpsCont.join({ from: player2 });    
-            await rpsCont.play(rock, { from: player2 });
+            await rpsCont.join(p1Hash, { from: player2 });    
+            await rpsCont.play(p1Hash, rock, { from: player2 });
             await timeTravel(unlockPeriod/2);
     
             // Check that cannot cancel before unlock deadline expiry.
-            await truffleAssert.reverts(rpsCont.cancelNoUnlock({ from: player2 }));
+            await truffleAssert.reverts(rpsCont.cancelNoUnlock(p1Hash, { from: player2 }));
 
             await timeTravel(unlockPeriod);
 
             const p2Before = toBN(await rpsCont.getBalance({ from: player2 }));
-            const txObjCancel = await rpsCont.cancelNoUnlock({ from: player2 });
+            const txObjCancel = await rpsCont.cancelNoUnlock(p1Hash, { from: player2 });
             
             const cancelEvent = txObjCancel.logs[0];
             assert.strictEqual(cancelEvent.event, 'LogCancelNoUnlock', 'Wrong event emitted.');
+            assert.strictEqual(cancelEvent.args.entryHash, p1Hash, 'Wrong game entryHash.');
             assert.strictEqual(cancelEvent.args.sender, player2, 'Cancel No Unlock Log Sender Error');
     
             const p2After = toBN(await rpsCont.getBalance({ from: player2 }));
@@ -155,7 +158,7 @@ contract('RockPaperScissors', function(accounts){
             const txObjDeposit = await rpsCont.deposit({ from: player2, value: initialDeposit});
 
             //Check game status
-            const statusNotInPlay = await rpsCont.status.call({ from: player2 });
+            const statusNotInPlay = (await rpsCont.gameMap.call(p1Hash, { from: player2 })).status;
             assert.strictEqual(statusNotInPlay.toNumber(), notInPlay, 'Game Status - NotInPlay Error');
             
             const depositEvent = txObjDeposit.logs[0];
@@ -175,51 +178,55 @@ contract('RockPaperScissors', function(accounts){
             assert.strictEqual(enrolEvent.args.entryHash, p1Hash, 'Enrol Log Entry Hash Error');
 
             //Check game status
-            const statusWaitingForJoin = await rpsCont.status.call({ from: player2 });
+            const statusWaitingForJoin = (await rpsCont.gameMap.call(p1Hash, { from: player2 })).status;
             assert.strictEqual(statusWaitingForJoin.toNumber(), waitingForJoin, 'Game Status - WaitingForJoin Error');
     
-            const txObjJoin = await rpsCont.join({ from: player2 });
+            const txObjJoin = await rpsCont.join(p1Hash, { from: player2 });
 
             const joinEvent = txObjJoin.logs[0];
             assert.strictEqual(joinEvent.event, 'LogJoin', 'Wrong event emitted.');
+            assert.strictEqual(joinEvent.args.entryHash, p1Hash, 'Wrong game entryHash.');
             assert.strictEqual(joinEvent.args.sender, player2, 'Join Log Sender Error');
 
             //Check game status
-            const statusWaitingForPlay = await rpsCont.status.call({ from: player2 });
+            const statusWaitingForPlay = (await rpsCont.gameMap.call(p1Hash, { from: player2 })).status;
             assert.strictEqual(statusWaitingForPlay.toNumber(), waitingForPlay, 'Game Status - WaitingForPlay Error');
 
-            const txObjPlay = await rpsCont.play(paper, { from: player2 });
+            const txObjPlay = await rpsCont.play(p1Hash, paper, { from: player2 });
     
             const playEvent = txObjPlay.logs[0];
             assert.strictEqual(playEvent.event, 'LogPlay', 'Wrong event emitted.');
+            assert.strictEqual(playEvent.args.entryHash, p1Hash, 'Wrong game entryHash.');
             assert.strictEqual(playEvent.args.sender, player2, 'Play Log Sender Error');
             assert.strictEqual(playEvent.args.move.toNumber(), paper, 'Play Log Move Error');
 
             //Check game status
-            const statusWaitingForUnlock = await rpsCont.status.call({ from: player2 });
+            const statusWaitingForUnlock = (await rpsCont.gameMap.call(p1Hash, { from: player2 })).status;
             assert.strictEqual(statusWaitingForUnlock.toNumber(), waitingForUnlock, 'Game Status - WaitingForUnlock Error');
-    
+
             // Check that player 2 cannot unlock using player 1's code and move.
-            await truffleAssert.reverts(rpsCont.unlock(p1Code, rock, { from: player2 }));
+            await truffleAssert.reverts(rpsCont.unlock(p1Hash, p1Code, rock, { from: player2 }));
     
             // Check that player 1 cannot change their submitted move.
-            await truffleAssert.reverts(rpsCont.unlock(p1Code, scissors, { from: player1 }));
+            await truffleAssert.reverts(rpsCont.unlock(p1Hash, p1Code, scissors, { from: player1 }));
     
-            const txObjUnlock = await rpsCont.unlock(p1Code, rock, { from: player1 });
+            const txObjUnlock = await rpsCont.unlock(p1Hash, p1Code, rock, { from: player1 });
     
             const unlockEvent = txObjUnlock.logs[0];
             assert.strictEqual(unlockEvent.event, 'LogUnlock', 'Wrong event emitted.');
+            assert.strictEqual(unlockEvent.args.entryHash, p1Hash, 'Wrong game entryHash.');
             assert.strictEqual(unlockEvent.args.sender, player1, 'Unlock Log Sender Error');
             assert.strictEqual(unlockEvent.args.move.toNumber(), rock, 'Unlock Log Move Error');
     
             const unlockEvent2 = txObjUnlock.logs[1];
             assert.strictEqual(unlockEvent2.event, 'LogWinnerFound', 'Wrong event emitted.');
+            assert.strictEqual(unlockEvent2.args.entryHash, p1Hash, 'Wrong game entryHash.');
             assert.strictEqual(unlockEvent2.args.winner, player2, 'Winner Found Log Winner Error');
             assert.strictEqual(unlockEvent2.args.loser, player1, 'Winner Found Log Loser Error');
             assert.strictEqual(unlockEvent2.args.amount.toString(10), p1Bet.toString(10), 'Winner Found Log Amount Error');
 
             // Check that player 1 cannot re-unlock their move.
-            await truffleAssert.reverts(rpsCont.unlock(p1Code, rock, { from: player1 }));
+            await truffleAssert.reverts(rpsCont.unlock(p1Hash, p1Code, rock, { from: player1 }));
     
             const p1After = toBN(await rpsCont.getBalance({ from: player1 }));
             const p2After = toBN(await rpsCont.getBalance({ from: player2 }));
@@ -231,9 +238,9 @@ contract('RockPaperScissors', function(accounts){
                 p2After.sub(p1Bet).toString(10), "Player 2's expected contract balance incorrect.");
 
             //Check game status
-            const postGameNotInPlay = await rpsCont.status.call({ from: player2 });
+            const postGameNotInPlay = (await rpsCont.gameMap.call(p1Hash, { from: player2 })).status;
             assert.strictEqual(postGameNotInPlay.toNumber(), notInPlay, 'Post Game Status - NotInPlay Error');
-    
+
             // Winner can use earnings to place bigger bet.
     
             const newBet = initialDeposit.add(p1Bet);
@@ -250,8 +257,8 @@ contract('RockPaperScissors', function(accounts){
             const p2Before = toBN(await rpsCont.getBalance({ from: player2 }));
     
             await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
-            await rpsCont.join({ from: player2 });
-            await rpsCont.play(rock, { from: player2 });
+            await rpsCont.join(p1Hash, { from: player2 });
+            await rpsCont.play(p1Hash, rock, { from: player2 });
     
             const p1Mid = toBN(await rpsCont.getBalance({ from: player1 }));
             const p2Mid = toBN(await rpsCont.getBalance({ from: player2 }));
@@ -262,15 +269,17 @@ contract('RockPaperScissors', function(accounts){
             assert.strictEqual(p2Before.sub(p1Bet).toString(10),
                 p2Mid.toString(10), "Player 2's expected contract balance incorrect.");
     
-            const txObjUnlock = await rpsCont.unlock(p1Code, rock, { from: player1 });
+            const txObjUnlock = await rpsCont.unlock(p1Hash, p1Code, rock, { from: player1 });
     
             const unlockEvent = txObjUnlock.logs[0];
             assert.strictEqual(unlockEvent.event, 'LogUnlock', 'Wrong event emitted.');
+            assert.strictEqual(unlockEvent.args.entryHash, p1Hash, 'Wrong game entryHash.');
             assert.strictEqual(unlockEvent.args.sender, player1, 'Unlock Log Sender Error');
             assert.strictEqual(unlockEvent.args.move.toNumber(), rock, 'Unlock Log Move Error');
     
             const unlockEvent2 = txObjUnlock.logs[1];
             assert.strictEqual(unlockEvent2.event, 'LogDrawGame', 'Wrong event emitted.');
+            assert.strictEqual(unlockEvent2.args.entryHash, p1Hash, 'Wrong game entryHash.');
             assert.strictEqual(unlockEvent2.args.player1, player1, 'Draw Game Log Player 1 Error');
             assert.strictEqual(unlockEvent2.args.player2, player2, 'Draw Game Log Player 2 Error');
             assert.strictEqual(unlockEvent2.args.amount.toString(10), p1Bet.toString(10), 'Draw Game Log Amount Error');
@@ -297,19 +306,19 @@ contract('RockPaperScissors', function(accounts){
             await timeTravel(playPeriod/2);
             await rpsCont.unpause({ from: owner });
     
-            await rpsCont.join({ from: player2 });
+            await rpsCont.join(p1Hash, { from: player2 });
 
             await rpsCont.pause({ from: owner });
             await timeTravel(playPeriod/2);
             await rpsCont.unpause({ from: owner });
 
-            await rpsCont.play(paper, { from: player2 });
+            await rpsCont.play(p1Hash, paper, { from: player2 });
     
             await rpsCont.pause({ from: owner });
             await timeTravel(playPeriod/2);
             await rpsCont.unpause({ from: owner });
     
-            await rpsCont.unlock(p1Code, rock, { from: player1 });
+            await rpsCont.unlock(p1Hash, p1Code, rock, { from: player1 });
     
             const p1After = toBN(await rpsCont.getBalance({ from: player1 }));
             const p2After = toBN(await rpsCont.getBalance({ from: player2 }));
@@ -353,9 +362,9 @@ contract('RockPaperScissors', function(accounts){
             beforeEach('Complete 1 game.', async function() {
                 await rpsCont.deposit({ from: player2, value: initialDeposit});
                 await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
-                await rpsCont.join({ from: player2 });
-                await rpsCont.play(paper, { from: player2 });
-                await rpsCont.unlock(p1Code, rock, { from: player1 });
+                await rpsCont.join(p1Hash, { from: player2 });
+                await rpsCont.play(p1Hash, paper, { from: player2 });
+                await rpsCont.unlock(p1Hash, p1Code, rock, { from: player1 });
             });
 
             it ("Cannot enrol with used-before hash.", async function() {
@@ -391,15 +400,15 @@ contract('RockPaperScissors', function(accounts){
             await truffleAssert.reverts(rpsCont.deposit({ from: player1, value: initialDeposit }));
             await truffleAssert.reverts(rpsCont.getBalance({ from: player1 }));
             await truffleAssert.reverts(rpsCont.withdraw(initialDeposit, { from: player1 }));
-            await truffleAssert.reverts(rpsCont.getCurrentBet({ from: player2 }));
+            await truffleAssert.reverts(rpsCont.getCurrentBet(p1Hash, { from: player2 }));
             await truffleAssert.reverts(rpsCont.enrol(p1Hash, p1Bet, { from: player1 }));
-            await truffleAssert.reverts(rpsCont.join({ from: player2 }));
-            await truffleAssert.reverts(rpsCont.play(rock, { from: player2 }));
-            await truffleAssert.reverts(rpsCont.unlock(p1Code, rock, { from: player1 }));
+            await truffleAssert.reverts(rpsCont.join(p1Hash, { from: player2 }));
+            await truffleAssert.reverts(rpsCont.play(p1Hash, rock, { from: player2 }));
+            await truffleAssert.reverts(rpsCont.unlock(p1Hash, p1Code, rock, { from: player1 }));
             await truffleAssert.reverts(rpsCont.transferOwnership(player1, { from: owner }));
-            await truffleAssert.reverts(rpsCont.cancelNoJoin({ from: player1 }));
-            await truffleAssert.reverts(rpsCont.cancelNoPlay({ from: player1 }));
-            await truffleAssert.reverts(rpsCont.cancelNoUnlock({ from: player2 }));
+            await truffleAssert.reverts(rpsCont.cancelNoJoin(p1Hash, { from: player1 }));
+            await truffleAssert.reverts(rpsCont.cancelNoPlay(p1Hash, { from: player1 }));
+            await truffleAssert.reverts(rpsCont.cancelNoUnlock(p1Hash, { from: player2 }));
             
         });
     });
@@ -423,10 +432,10 @@ contract('RockPaperScissors', function(accounts){
         assert.strictEqual(enrolEvent2.args.entryHash, p1Hash, 'Enrol Log Entry Hash Error');
 
         // cannot join if no deposit amount sent.
-        await truffleAssert.reverts(rpsCont.join({ from: player2 }));
+        await truffleAssert.reverts(rpsCont.join(p1Hash, { from: player2 }));
 
         const initialDepositP2 = toBN(toWei('5', "Gwei"));
-        const txObjJoin = await rpsCont.join({ from: player2, value: initialDepositP2 });
+        const txObjJoin = await rpsCont.join(p1Hash, { from: player2, value: initialDepositP2 });
 
         const joinEvent = txObjJoin.logs[0];
         assert.strictEqual(joinEvent.event, 'LogDeposit', 'Wrong event emitted.');
@@ -435,10 +444,11 @@ contract('RockPaperScissors', function(accounts){
 
         const joinEvent2 = txObjJoin.logs[1];
         assert.strictEqual(joinEvent2.event, 'LogJoin', 'Wrong event emitted.');
+        assert.strictEqual(joinEvent2.args.entryHash, p1Hash, 'Wrong game entryHash.');
         assert.strictEqual(joinEvent2.args.sender, player2, 'Join Log Sender Error');
 
-        await rpsCont.play(paper, { from: player2 });
-        await rpsCont.unlock(p1Code, rock, { from: player1 });
+        await rpsCont.play(p1Hash, paper, { from: player2 });
+        await rpsCont.unlock(p1Hash, p1Code, rock, { from: player1 });
 
         const p1After = toBN(await rpsCont.getBalance({ from: player1 }));
         const p2After = toBN(await rpsCont.getBalance({ from: player2 }));
@@ -458,9 +468,9 @@ contract('RockPaperScissors', function(accounts){
         const p1Hash = await rpsCont.hashIt.call(p1Code, rock, { from: player1 });
         
         await rpsCont.enrol(p1Hash, p1Bet, { from: player1 });
-        await rpsCont.join({ from: player2 });
-        await rpsCont.play(paper, { from: player2 });
-        await rpsCont.unlock(p1Code, rock, { from: player1 });
+        await rpsCont.join(p1Hash, { from: player2 });
+        await rpsCont.play(p1Hash, paper, { from: player2 });
+        await rpsCont.unlock(p1Hash, p1Code, rock, { from: player1 });
 
         const p1After = toBN(await rpsCont.getBalance({ from: player1 }));
         const p2After = toBN(await rpsCont.getBalance({ from: player2 }));
@@ -516,5 +526,105 @@ contract('RockPaperScissors', function(accounts){
 
         const newOwner = await rpsCont.getOwner.call({ from: owner });
         assert.strictEqual(newOwner, player1, "Ownership not transferred correctly.");
+    });
+
+    describe('Multi-game tests.', function() {
+        let hash = [];
+
+        beforeEach('Set up hashes.', async function() {
+            hash.push( await rpsCont.hashIt.call(p1Code, rock, { from: player1 }));
+            hash.push( await rpsCont.hashIt.call(p1Code, paper, { from: player1 }));
+            hash.push( await rpsCont.hashIt.call(p1Code, scissors, { from: player1 }));
+        });
+
+        it('Test that multiple on-going games give correct results and fund movements, regardless of completion order.', async function() {
+            await rpsCont.enrol(hash[0], p1Bet, { from: player1, value: p1Bet.mul(toBN(6)) });
+            await rpsCont.enrol(hash[1], p1Bet.mul(toBN(2)), { from: player1});
+            await rpsCont.enrol(hash[2], p1Bet.mul(toBN(3)), { from: player1});
+
+            const p1Before = toBN(await rpsCont.getBalance({ from: player1 }));
+
+            const p2Bet = await rpsCont.getCurrentBet.call( hash[0], { from: player2 });
+            await rpsCont.join(hash[0], { from: player2, value: p2Bet });
+            const p2Before = toBN(await rpsCont.getBalance({ from: player2 }));
+
+            const p3Bet = await rpsCont.getCurrentBet.call( hash[1], { from: player3 });
+            await rpsCont.join(hash[1], { from: player3, value: p3Bet})
+            await rpsCont.play(hash[1], paper,{ from: player3 }); //player1 played paper.
+            const p3Before = toBN(await rpsCont.getBalance({ from: player3 }));
+
+            // check player 3 cannot play in the game player 2 has registered in.
+            await truffleAssert.reverts(rpsCont.play(hash[0], rock, { from: player3 }));
+
+            const p4Bet = await rpsCont.getCurrentBet.call( hash[2], { from: player4 });
+            await rpsCont.join(hash[2], { from: player4, value: p4Bet})
+            await rpsCont.play(hash[2], rock,{ from: player4 }); //player1 played scissors.
+            const p4Before = toBN(await rpsCont.getBalance({ from: player4 }));
+
+            await rpsCont.unlock(hash[2], p1Code, scissors, { from: player1 });
+
+            await rpsCont.unlock(hash[1], p1Code, paper, { from: player1 });
+
+            await rpsCont.play(hash[0], scissors,{ from: player2 }); //player1 played rock.
+            await rpsCont.unlock(hash[0], p1Code, rock, { from: player1 });
+
+            const p1After = toBN(await rpsCont.getBalance({ from: player1 }));
+            const p2After = toBN(await rpsCont.getBalance({ from: player2 }));
+            const p3After = toBN(await rpsCont.getBalance({ from: player3 }));
+            const p4After = toBN(await rpsCont.getBalance({ from: player4 }));
+
+            // player1: 1 win, 1 draw, 1 loss
+            assert.strictEqual(p1Before.toString(10), p1After
+                .sub(p2Bet.mul(toBN(2))) // for the win
+                .sub(p3Bet) // for the draw
+                .toString(10), 'Player 1 balance incorrect.');
+
+            // player2: 1 loss
+            assert.strictEqual(p2Before.toString(10), p2After.toString(10), 'Player 2 balance incorrect.');
+            // player3: 1 draw
+            assert.strictEqual(p3Before.toString(10), p3After.sub(p3Bet).toString(10), 'Player 3 balance incorrect.');
+            // player4: 1 win
+            assert.strictEqual(p4Before.toString(10), p4After.sub(p4Bet.mul(toBN(2))).toString(10), 'Player 4 balance incorrect.');
+        });
+
+        it('Test that cancelling before player 1 unlocks gives the correct refunds and allows the same entryHash to be used again.', async function() {
+            await rpsCont.enrol(hash[0], p1Bet, { from: player1, value: p1Bet.mul(toBN(6)) });
+            await rpsCont.enrol(hash[1], p1Bet.mul(toBN(2)), { from: player1});
+            await rpsCont.enrol(hash[2], p1Bet.mul(toBN(3)), { from: player1});
+
+            const p1Before = toBN(await rpsCont.getBalance({ from: player1 }));
+
+            const p2Bet = await rpsCont.getCurrentBet.call( hash[1], { from: player2 });
+            await rpsCont.join(hash[1], { from: player2, value: p2Bet });
+            const p2Before = toBN(await rpsCont.getBalance({ from: player2 }));
+
+            const p3Bet = await rpsCont.getCurrentBet.call( hash[2], { from: player3 });
+            await rpsCont.join(hash[2], { from: player3, value: p3Bet });
+            await rpsCont.play(hash[2], rock, { from: player3 });
+            const p3Before = toBN(await rpsCont.getBalance({ from: player3 }));
+
+            await timeTravel(unlockPeriod + 1);
+
+            await rpsCont.cancelNoJoin(hash[0], { from: player1 });
+            const p1After = toBN(await rpsCont.getBalance({ from: player1 }));
+            assert.strictEqual(p1Before.toString(10), p1After.sub(p1Bet).toString(10), 'Refund from "cancelNoJoin" failure.');
+
+            const p1Before2 = toBN(await rpsCont.getBalance({ from: player1 }));
+            await rpsCont.cancelNoPlay(hash[1], { from: player1 });
+            const p1After2 = toBN(await rpsCont.getBalance({ from: player1 }));
+            assert.strictEqual(p1Before2.toString(10), p1After2.sub(p2Bet.mul(toBN(2))).toString(10), 'Refund from "cancelNoPlay" failure.');
+            
+            const p2After = toBN(await rpsCont.getBalance({ from: player2 }));
+            assert.strictEqual(p2Before.toString(10), p2After.toString(10), 'Erroneous refund from "cancelNoPlay".');
+
+            await rpsCont.cancelNoUnlock(hash[2], { from: player3 });
+            const p3After = toBN(await rpsCont.getBalance({ from: player3 }));
+            assert.strictEqual(p3Before.toString(10), p3After.sub(p3Bet.mul(toBN(2))).toString(10), 'Refund from "cancelNoUnlock" failure.');
+
+            // Check that entryHashes can all be used again.
+            await rpsCont.enrol(hash[0], p1Bet, { from: player1 });
+            await rpsCont.enrol(hash[1], p1Bet, { from: player1});
+            await rpsCont.enrol(hash[2], p1Bet, { from: player1});
+        });
     });
 })

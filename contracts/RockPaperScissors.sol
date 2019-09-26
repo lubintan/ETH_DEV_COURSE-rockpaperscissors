@@ -14,33 +14,38 @@ contract RockPaperScissors is Ownable, Killable {
         NotInPlay, WaitingForJoin, WaitingForPlay, WaitingForUnlock
     }
 
+    struct Game
+    {
+        address player1Sender;
+        Action player2Move;
+        address player2Sender;
+        Status status;
+        uint256 bet;
+        uint256 joinDeadline;
+        uint256 playDeadline;
+        uint256 unlockDeadline;
+    }
+
     mapping (address => uint256) balances;
     mapping (bytes32 => bool) usedHashes;
-    bytes32 player1EntryHash;
-    address player1Sender;
-    Action player2Move;
-    address player2Sender;
-    Status public status;
-    uint256 bet;
+    mapping (bytes32 => Game) public gameMap;
+
     uint256 public constant joinPeriod = 1 hours;
     uint256 public constant playPeriod = 1 hours;
     uint256 public constant unlockPeriod = 2 hours;
-    uint256 public joinDeadline;
-    uint256 public playDeadline;
-    uint256 public unlockDeadline;
 
     // Remember to add in LogEvents.
     event LogDeposit(address indexed sender, uint256 amount);
     event LogWithdraw(address indexed sender, uint256 amount);
-    event LogEnrol(address indexed sender, uint256 indexed bet, bytes32 indexed entryHash);
-    event LogJoin(address indexed sender);
-    event LogPlay(address indexed sender, Action indexed move);
-    event LogUnlock(address indexed sender, Action indexed move);
-    event LogWinnerFound(address indexed winner, address indexed loser, uint256 amount);
-    event LogDrawGame(address indexed player1, address indexed player2, uint256 amount);
-    event LogCancelNoJoin(address indexed sender);
-    event LogCancelNoPlay(address indexed sender);
-    event LogCancelNoUnlock(address indexed sender);
+    event LogEnrol(bytes32 indexed entryHash, address indexed sender, uint256 indexed bet);
+    event LogJoin(bytes32 indexed entryHash, address indexed sender);
+    event LogPlay(bytes32 indexed entryHash, address indexed sender, Action indexed move);
+    event LogUnlock(bytes32 indexed entryHash, address indexed sender, Action indexed move);
+    event LogWinnerFound(bytes32 indexed entryHash, address indexed winner, address indexed loser, uint256 amount);
+    event LogDrawGame(bytes32 indexed entryHash, address indexed player1, address indexed player2, uint256 amount);
+    event LogCancelNoJoin(bytes32 indexed entryHash, address indexed sender);
+    event LogCancelNoPlay(bytes32 indexed entryHash, address indexed sender);
+    event LogCancelNoUnlock(bytes32 indexed entryHash, address indexed sender);
     event LogKilledWithdrawal(address indexed sender, uint256 amount);
 
 
@@ -80,15 +85,15 @@ contract RockPaperScissors is Ownable, Killable {
         msg.sender.transfer(withdrawAmount);
     }
 
-    function getCurrentBet()
+    function getCurrentBet(bytes32 entryHash)
         public
         view
         whenNotPaused
         whenAlive
         returns (uint256)
     {
-        require(player1Sender != address(0), 'No current player.');
-        return bet;
+        require(gameMap[entryHash].player1Sender != address(0), 'No current player.');
+        return gameMap[entryHash].bet;
     }
 
     function enrol(bytes32 entryHash, uint256 newBet)
@@ -96,13 +101,17 @@ contract RockPaperScissors is Ownable, Killable {
         payable
         whenNotPaused
         whenAlive
+        returns (uint256)
     {
         if (msg.value > 0){
             emit LogDeposit(msg.sender, msg.value);
         }
 
-        require(player1Sender == address(0), 'Player 1 taken.');
         require(!usedHashes[entryHash], 'Cannot re-use hash.');
+
+        /*For a game that did not reach completion, the hash is not added to the usedHashes table.
+        This can be because it was cancelled, or it is currently still in play. */
+        require(gameMap[entryHash].status == Status.NotInPlay, 'Existing game in progress.');
 
         /* The null condition for players 1 and 2 in this contract is address(0).
         In other words,address(0) is taken to be the case where there is no player.
@@ -110,155 +119,154 @@ contract RockPaperScissors is Ownable, Killable {
         require(msg.sender != address(0), 'Address 0 not allowed.');
 
         balances[msg.sender] = balances[msg.sender].add(msg.value).sub(newBet);
-        bet = newBet;
-        player1EntryHash = entryHash;
-        player1Sender = msg.sender;
-        joinDeadline = now.add(playPeriod);
 
-        emit LogEnrol(msg.sender, newBet, entryHash);
-        status = Status.WaitingForJoin;
+        gameMap[entryHash].bet = newBet;
+        gameMap[entryHash].player1Sender = msg.sender;
+        gameMap[entryHash].joinDeadline = now.add(playPeriod);
 
-        usedHashes[entryHash] = true;
+        emit LogEnrol(entryHash, msg.sender, newBet);
+        gameMap[entryHash].status = Status.WaitingForJoin;
     }
 
-    function join()
+    function join(bytes32 entryHash)
         public
         payable
         whenNotPaused
         whenAlive
     {
-        require(player1Sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
-        require(player2Sender == address(0), 'Game in progress');
+        require(gameMap[entryHash].player1Sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
+        require(gameMap[entryHash].player2Sender == address(0), 'Game in progress');
         require(msg.sender != address(0), 'Address 0 not allowed.');
 
         if (msg.value > 0){
             emit LogDeposit(msg.sender, msg.value);
         }
 
-        player2Sender = msg.sender;
-        balances[msg.sender] = balances[msg.sender].add(msg.value).sub(bet);
-        playDeadline = now.add(playPeriod);
+        balances[msg.sender] = balances[msg.sender].add(msg.value).sub(gameMap[entryHash].bet);
+        gameMap[entryHash].player2Sender = msg.sender;
+        gameMap[entryHash].playDeadline = now.add(playPeriod);
 
-        emit LogJoin(msg.sender);
-        status = Status.WaitingForPlay;
+        emit LogJoin(entryHash, msg.sender);
+        gameMap[entryHash].status = Status.WaitingForPlay;
     }
 
-    function play(Action move)
+    function play(bytes32 entryHash, Action move)
         public
         whenNotPaused
         whenAlive
     {
-        require(player2Sender == msg.sender, "You have not joined the game.");
+        require(gameMap[entryHash].player2Sender == msg.sender, "You have not joined the game.");
         require(move != Action.Null, 'Ineligible move.');
 
-        player2Move = move;
-        unlockDeadline = now.add(unlockPeriod);
+        gameMap[entryHash].player2Move = move;
+        gameMap[entryHash].unlockDeadline = now.add(unlockPeriod);
 
-        emit LogPlay(msg.sender, move);
-        status = Status.WaitingForUnlock;
+        emit LogPlay(entryHash, msg.sender, move);
+        gameMap[entryHash].status = Status.WaitingForUnlock;
     }
 
-    function unlock(bytes32 code, Action move)
+    function unlock(bytes32 entryHash, bytes32 code, Action move)
         public
         whenNotPaused
         whenAlive
     {
-        require(player1Sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
-        require(player2Move != Action.Null, 'Cannot unlock before player 2 has played.');
+        require(gameMap[entryHash].player1Sender != address(0), 'No one to play against. Use "enrol" to start a new game.');
+        require(gameMap[entryHash].player2Move != Action.Null, 'Cannot unlock before player 2 has played.');
         require(move != Action.Null, 'Ineligible move.');
-        require(hashIt(code, move) == player1EntryHash, 'Unverified move.');
+        require(hashIt(code, move) == entryHash, 'Unverified move.');
 
-        emit LogUnlock(msg.sender, move);
-        evaluate(move);
+        usedHashes[entryHash] = true; // disallow repeated use of the same hash only if it has been revealed before.
+        emit LogUnlock(entryHash, msg.sender, move);
+        evaluate(entryHash, move);
     }
 
-    function evaluate(Action p1Move)
+    function evaluate(bytes32 entryHash, Action p1Move)
         internal
         whenNotPaused
         whenAlive
     {
-        uint256 betSize = bet;
-        address p1Sender = player1Sender;
-        address p2Sender = player2Sender;
+        uint256 betSize = gameMap[entryHash].bet;
+        address p1Sender = gameMap[entryHash].player1Sender;
+        address p2Sender = gameMap[entryHash].player2Sender;
 
-        uint8 result = (3 + uint8(p1Move) - uint8(player2Move)) % 3;
+        uint8 result = (3 + uint8(p1Move) - uint8(gameMap[entryHash].player2Move)) % 3;
         if (result == 1){ // player 1 wins.
             balances[p1Sender] = balances[p1Sender].add(betSize.mul(2));
-            emit LogWinnerFound(p1Sender, p2Sender, betSize);
+            emit LogWinnerFound(entryHash, p1Sender, p2Sender, betSize);
 
         } else if (result == 2) { // player 2 wins.
             balances[p2Sender] = balances[p2Sender].add(betSize.mul(2));
-            emit LogWinnerFound(p2Sender, p1Sender, betSize);
+            emit LogWinnerFound(entryHash, p2Sender, p1Sender, betSize);
 
         } else { // draw.
             balances[p1Sender] = balances[p1Sender].add(betSize);
             balances[p2Sender] = balances[p2Sender].add(betSize);
-            emit LogDrawGame(p1Sender, p2Sender, betSize);
+            emit LogDrawGame(entryHash, p1Sender, p2Sender, betSize);
         }
-        // Game complete. Reset Game.
-        resetGame();
+        // Game complete. Since this entryHash cannot be used again, functionally the game variables do not need to be reset.
+        // This is being done for the gas refund.
+        resetGame(entryHash);
     }
 
-    function cancelNoJoin()
+    function cancelNoJoin(bytes32 entryHash)
         public
         whenNotPaused
         whenAlive
     {
-        require(msg.sender == player1Sender, 'Not currently enrolled.');
-        require(player2Sender == address(0), 'Opponent exists.');
-        require(now > joinDeadline, 'Join period not expired.');
+        require(msg.sender == gameMap[entryHash].player1Sender, 'Not currently enrolled.');
+        require(gameMap[entryHash].player2Sender == address(0), 'Opponent exists.');
+        require(now > gameMap[entryHash].joinDeadline, 'Join period not expired.');
 
-        balances[msg.sender] = balances[msg.sender].add(bet);
-        resetGame();
-        emit LogCancelNoJoin(msg.sender);
+        balances[msg.sender] = balances[msg.sender].add(gameMap[entryHash].bet);
+        emit LogCancelNoJoin(entryHash, msg.sender);
+        resetGame(entryHash);
     }
 
-    function cancelNoPlay()
+    function cancelNoPlay(bytes32 entryHash)
         public
         whenNotPaused
         whenAlive
     {
-        require(msg.sender == player1Sender, 'Not currently enrolled.');
-        require(player2Sender != address(0), 'No opponent. Use CancelNoJoin to cancel.');
-        require(player2Move == Action.Null, 'Not allowed. Please unlock your move.');
-        require(now > playDeadline, 'Play period not expired.');
+        require(msg.sender == gameMap[entryHash].player1Sender, 'Not currently enrolled.');
+        require(gameMap[entryHash].player2Sender != address(0), 'No opponent. Use CancelNoJoin to cancel.');
+        require(gameMap[entryHash].player2Move == Action.Null, 'Not allowed. Please unlock your move.');
+        require(now > gameMap[entryHash].playDeadline, 'Play period not expired.');
 
-        balances[msg.sender] = balances[msg.sender].add(bet.mul(2));
-        resetGame();
-        emit LogCancelNoPlay(msg.sender);
+        balances[msg.sender] = balances[msg.sender].add(gameMap[entryHash].bet.mul(2));
+        emit LogCancelNoPlay(entryHash, msg.sender);
+        resetGame(entryHash);
     }
 
 
-    function cancelNoUnlock()
+    function cancelNoUnlock(bytes32 entryHash)
         public
         whenNotPaused
         whenAlive
     {
-        require(msg.sender == player2Sender, 'Only player 2 allowed to call this function.');
-        require(now > unlockDeadline, 'Unlock period not expired.');
+        require(msg.sender == gameMap[entryHash].player2Sender, 'Only player 2 allowed to call this function.');
+        require(now > gameMap[entryHash].unlockDeadline, 'Unlock period not expired.');
 
-        balances[msg.sender] = balances[msg.sender].add(bet.mul(2));
-        resetGame();
-        emit LogCancelNoUnlock(msg.sender);
+        balances[msg.sender] = balances[msg.sender].add(gameMap[entryHash].bet.mul(2));
+        emit LogCancelNoUnlock(entryHash, msg.sender);
+        resetGame(entryHash);
     }
 
-    function resetGame()
+    function resetGame(bytes32 entryHash)
         internal
         whenNotPaused
         whenAlive
     {
-        player1EntryHash = 0;
-        player1Sender = address(0);
+        gameMap[entryHash].player1Sender = address(0);
 
-        player2Sender = address(0);
-        player2Move = Action.Null;
+        gameMap[entryHash].player2Sender = address(0);
+        gameMap[entryHash].player2Move = Action.Null;
 
-        bet = 0;
-        joinDeadline = 0;
-        playDeadline = 0;
-        unlockDeadline = 0;
+        gameMap[entryHash].bet = 0;
+        gameMap[entryHash].joinDeadline = 0;
+        gameMap[entryHash].playDeadline = 0;
+        gameMap[entryHash].unlockDeadline = 0;
 
-        status = Status.NotInPlay;
+        gameMap[entryHash].status = Status.NotInPlay;
     }
 
     function hashIt(bytes32 code, Action move)
