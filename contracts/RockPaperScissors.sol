@@ -99,7 +99,7 @@ contract RockPaperScissors is Ownable, Killable {
         return games[entryHash].bet;
     }
 
-    function enrol(bytes32 entryHash)
+    function enrol(bytes32 entryHash, uint256 newBet)
         public
         payable
         whenNotPaused
@@ -117,11 +117,12 @@ contract RockPaperScissors is Ownable, Killable {
         As such, address(0) is not allowed to be a player in this contract. */
         require(msg.sender != address(0), 'Address 0 not allowed.');
 
-        games[entryHash].bet = msg.value;
+        balances[msg.sender] = balances[msg.sender].add(msg.value).sub(newBet);
+        games[entryHash].bet = newBet;
         games[entryHash].player1Sender = msg.sender;
         games[entryHash].gameDeadline = now.add(playPeriod);
 
-        emit LogEnrol(entryHash, msg.sender, msg.value);
+        emit LogEnrol(entryHash, msg.sender, newBet);
     }
 
     function join(bytes32 entryHash)
@@ -133,7 +134,6 @@ contract RockPaperScissors is Ownable, Killable {
         require(games[entryHash].player1Sender != address(0), 'No current player. Use enrol to start a game.');
         require(games[entryHash].player2Sender == address(0), 'All player slots taken for this game.');
         require(msg.sender != address(0), 'Address 0 not allowed.');
-        require(games[entryHash].bet == msg.value, 'Please send the exact bet amount to join the game.');
 
         balances[msg.sender] = balances[msg.sender].add(msg.value).sub(games[entryHash].bet);
         games[entryHash].player2Sender = msg.sender;
