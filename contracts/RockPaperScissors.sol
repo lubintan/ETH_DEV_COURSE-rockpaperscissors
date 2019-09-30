@@ -55,7 +55,7 @@ contract RockPaperScissors is Ownable, Killable {
     1 WaitingForJoin   |   not 0       |     0       |     0         |   not 0
     2 WatiingForPlay   |   not 0       |     0       |   not 0       |   not 0
     3 WaitingForUnlock |   not 0       |   not 0     |   not 0       |   not 0
-    4 Complete         |     0         |   not 0     |     0         |     0
+    4 Complete         |   not 0       |   not 0     |     0         |     0
      */
 
     function getStatus(bytes32 entryHash)
@@ -66,14 +66,14 @@ contract RockPaperScissors is Ownable, Killable {
     {
         Action player2Move = games[entryHash].player2Move;
 
-        if (games[entryHash].player1Sender == address(0)) {
-            if (player2Move == Action.Null) return Status.NotInPlay;
-            else return Status.Complete;
-        } else if (games[entryHash].player2Sender != address(0)) {
+        if (games[entryHash].player2Sender != address(0)) {
             if (player2Move == Action.Null) return Status.WaitingForPlay;
             else return Status.WaitingForUnlock;
+        } else if (games[entryHash].player1Sender != address(0)) {
+            if (player2Move == Action.Null) return Status.WaitingForJoin;
+            else return Status.Complete;
         } else {
-            return Status.WaitingForJoin;
+            return Status.NotInPlay;
         }
     }
 
@@ -87,11 +87,14 @@ contract RockPaperScissors is Ownable, Killable {
         require(games[entryHash].player1Sender == msg.sender, 'Only player 1 allowed to call this function.');
         require(msg.sender != address(0), 'Address 0 not allowed.');
 
+        Action player2Move = games[entryHash].player2Move;
+
         if (games[entryHash].player2Sender != address(0)) {
-            if (games[entryHash].player2Move == Action.Null) return Status.WaitingForPlay;
+            if (player2Move == Action.Null) return Status.WaitingForPlay;
             else return Status.WaitingForUnlock;
         } else {
-            return Status.WaitingForJoin;
+            if (player2Move == Action.Null) return Status.WaitingForJoin;
+            else return Status.Complete;
         }
     }
 
@@ -196,7 +199,7 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(getStatus(entryHash) == Status.WaitingForUnlock, 'Not expecting player 1 to unlock.');
+        require(getStatusWithPlayer1Restriction(entryHash) == Status.WaitingForUnlock, 'Not expecting player 1 to unlock.');
         require(move != Action.Null, 'Ineligible move.');
         require(hashIt(code, move) == entryHash, 'Unverified move.');
 
@@ -229,7 +232,6 @@ contract RockPaperScissors is Ownable, Killable {
         }
 
         // Game complete. Keep player2Move != 0 to differentiate from NotInPlay state.
-        games[entryHash].player1Sender = address(0);
         games[entryHash].player2Sender = address(0);
         games[entryHash].bet = 0;
         games[entryHash].gameDeadline = 0;
