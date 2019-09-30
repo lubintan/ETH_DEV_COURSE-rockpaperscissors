@@ -23,7 +23,7 @@ contract RockPaperScissors is Ownable, Killable {
         uint256 gameDeadline;
     }
 
-    mapping (address => uint256) balances;
+    mapping (address => uint256) public balances;
     mapping (bytes32 => Game) public games;
 
     uint256 public constant joinPeriod = 1 hours;
@@ -31,10 +31,10 @@ contract RockPaperScissors is Ownable, Killable {
     uint256 public constant unlockPeriod = 2 hours;
 
     event LogWithdraw(address indexed sender, uint256 amount);
-    event LogEnrol(bytes32 indexed entryHash, address indexed sender, uint256 indexed bet);
+    event LogEnrol(bytes32 indexed entryHash, address indexed sender, uint256 bet);
     event LogJoin(bytes32 indexed entryHash, address indexed sender);
-    event LogPlay(bytes32 indexed entryHash, address indexed sender, Action indexed move);
-    event LogUnlock(bytes32 indexed entryHash, address indexed sender, Action indexed move);
+    event LogPlay(bytes32 indexed entryHash, address indexed sender, Action move);
+    event LogUnlock(bytes32 indexed entryHash, address indexed sender, Action move);
     event LogWinnerFound(bytes32 indexed entryHash, address indexed winner, address indexed loser, uint256 amount);
     event LogDrawGame(bytes32 indexed entryHash, address indexed player1, address indexed player2, uint256 amount);
     event LogCancelNoJoin(bytes32 indexed entryHash, address indexed sender);
@@ -61,7 +61,6 @@ contract RockPaperScissors is Ownable, Killable {
     function getStatus(bytes32 entryHash)
         public
         view
-        whenAlive
         returns (Status)
     {
         Action player2Move = games[entryHash].player2Move;
@@ -81,7 +80,6 @@ contract RockPaperScissors is Ownable, Killable {
     function getStatusWithPlayer1Restriction(bytes32 entryHash)
         internal
         view
-        whenAlive
         returns (Status)
     {
         require(games[entryHash].player1Sender == msg.sender, 'Only player 1 allowed to call this function.');
@@ -102,22 +100,12 @@ contract RockPaperScissors is Ownable, Killable {
     function getStatusWithPlayer2Restriction(bytes32 entryHash)
         internal
         view
-        whenAlive
         returns (Status)
     {
         require(games[entryHash].player2Sender == msg.sender, 'Only player 2 allowed to call this function.');
         require(msg.sender != address(0), 'Address 0 not allowed.');
 
         return games[entryHash].player2Move == Action.Null ? Status.WaitingForPlay : Status.WaitingForUnlock;
-    }
-
-    function getBalance()
-        public
-        view
-        whenAlive
-        returns (uint256)
-    {
-        return balances[msg.sender];
     }
 
     function withdraw(uint256 withdrawAmount)
@@ -128,14 +116,13 @@ contract RockPaperScissors is Ownable, Killable {
         require(withdrawAmount > 0, "Nothing to withdraw");
         balances[msg.sender] = balances[msg.sender].sub(withdrawAmount);
         emit LogWithdraw(msg.sender, withdrawAmount);
-        msg.sender.transfer(withdrawAmount);
+        (bool success, ) = msg.sender.call.value(withdrawAmount)('');
+        require(success, "Withdrawal failed.");
     }
 
     function getCurrentBet(bytes32 entryHash)
         public
         view
-        whenNotPaused
-        whenAlive
         returns (uint256)
     {
         require(games[entryHash].player1Sender != address(0), 'No current player.');
@@ -313,7 +300,8 @@ contract RockPaperScissors is Ownable, Killable {
 
         require(contractBalance > 0, "Contract balance is 0.");
         emit LogKilledWithdrawal(msg.sender, contractBalance);
-        msg.sender.transfer(contractBalance);
+        (bool success, ) = msg.sender.call.value(contractBalance)('');
+        require(success, 'Killed withdrawal failed.');
     }
 
     function ()
