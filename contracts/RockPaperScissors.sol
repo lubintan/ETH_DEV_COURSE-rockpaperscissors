@@ -9,6 +9,11 @@ contract RockPaperScissors is Ownable, Killable {
         Null, Rock, Paper, Scissors
     }
 
+    enum Status
+    {
+        NotInPlay, WaitingForJoin, WaitingForPlay, WaitingForUnlock, Complete
+    }
+
     struct Game
     {
         address player1Sender;
@@ -43,29 +48,64 @@ contract RockPaperScissors is Ownable, Killable {
     constructor() public {}
 
     /* Game statuses:
-    0 - Not in play: player1Sender == 0
-    1 - Waiting for P2 to join: player1Sender != 0 && player2Sender == 0
-    2 - Waiting for P2 to submit move: player2Sender != 0 && player2Move == 0
-    3 - Waiting for P1 to unlock move: player2Move != 0 && gameDeadline != 0
-    4 - Game complete: player2Move != 0 && gameDeadline == 0 */
+
+                       | player1Sender | player2Move | player2Sender | deadline
+    ============================================================================
+    0 NotInPlay        |     0         |     0       |     0         |     0
+    1 WaitingForJoin   |   not 0       |     0       |     0         |   not 0
+    2 WatiingForPlay   |   not 0       |     0       |   not 0       |   not 0
+    3 WaitingForUnlock |   not 0       |   not 0     |   not 0       |   not 0
+    4 Complete         |     0         |   not 0     |     0         |     0
+     */
 
     function getStatus(bytes32 entryHash)
         public
         view
         whenAlive
-        returns (uint8)
+        returns (Status)
     {
-        if ((games[entryHash].player1Sender != address(0)) && (games[entryHash].player2Sender == address(0))){
-            return 1;
-        } else if ((games[entryHash].player2Sender != address(0)) && (games[entryHash].player2Move == Action.Null)){
-            return 2;
-        } else if ((games[entryHash].player2Move != Action.Null) && (games[entryHash].gameDeadline != 0)){
-            return 3;
-        } else if ((games[entryHash].player2Move != Action.Null) && (games[entryHash].gameDeadline == 0)){
-            return 4;
-        }else{
-            return 0;
-            }
+        Action player2Move = games[entryHash].player2Move;
+
+        if (games[entryHash].player1Sender == address(0)) {
+            if (player2Move == Action.Null) return Status.NotInPlay;
+            else return Status.Complete;
+        } else if (games[entryHash].player2Sender != address(0)) {
+            if (player2Move == Action.Null) return Status.WaitingForPlay;
+            else return Status.WaitingForUnlock;
+        } else {
+            return Status.WaitingForJoin;
+        }
+    }
+
+    // The below function does the same thing as 'getStatus' plus verifies player1Sender, re-written to optimize gas savings.
+    function getStatusWithPlayer1Restriction(bytes32 entryHash)
+        internal
+        view
+        whenAlive
+        returns (Status)
+    {
+        require(games[entryHash].player1Sender == msg.sender, 'Only player 1 allowed to call this function.');
+        require(msg.sender != address(0), 'Address 0 not allowed.');
+
+        if (games[entryHash].player2Sender != address(0)) {
+            if (games[entryHash].player2Move == Action.Null) return Status.WaitingForPlay;
+            else return Status.WaitingForUnlock;
+        } else {
+            return Status.WaitingForJoin;
+        }
+    }
+
+    // The below function does the same thing as 'getStatus' plus verifies player2Sender, re-written to optimize gas savings.
+    function getStatusWithPlayer2Restriction(bytes32 entryHash)
+        internal
+        view
+        whenAlive
+        returns (Status)
+    {
+        require(games[entryHash].player2Sender == msg.sender, 'Only player 2 allowed to call this function.');
+        require(msg.sender != address(0), 'Address 0 not allowed.');
+
+        return games[entryHash].player2Move == Action.Null ? Status.WaitingForPlay : Status.WaitingForUnlock;
     }
 
     function getBalance()
@@ -106,11 +146,7 @@ contract RockPaperScissors is Ownable, Killable {
         whenAlive
         returns (uint256)
     {
-        // Status 4 - Game complete: player2Move!=0 && gameDeadline==0
-        // !(player2Move!=0 && gameDeadline==0) = player2Move==0 || gameDeadline!=0
-        require((games[entryHash].player2Move == Action.Null) || (games[entryHash].gameDeadline != 0), 'Cannot re-use hash.');
-
-        require((games[entryHash].player1Sender == address(0)), 'Existing game in progress.');
+        require(getStatus(entryHash) == Status.NotInPlay, 'Game already in progress or entryHash used before.');
 
         /* The null condition for players 1 and 2 in this contract is address(0).
         In other words,address(0) is taken to be the case where there is no player.
@@ -131,8 +167,7 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(games[entryHash].player1Sender != address(0), 'No current player. Use enrol to start a game.');
-        require(games[entryHash].player2Sender == address(0), 'All player slots taken for this game.');
+        require(getStatus(entryHash) == Status.WaitingForJoin, 'Not expecting player 2 to join.');
         require(msg.sender != address(0), 'Address 0 not allowed.');
 
         balances[msg.sender] = balances[msg.sender].add(msg.value).sub(games[entryHash].bet);
@@ -147,8 +182,7 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(games[entryHash].player2Sender == msg.sender, "You have not joined the game.");
-        require(games[entryHash].player2Move == Action.Null, "You have already played your move.");
+        require(getStatusWithPlayer2Restriction(entryHash) == Status.WaitingForPlay, 'Not expecting player 2 to play.');
         require(move != Action.Null, 'Ineligible move.');
 
         games[entryHash].player2Move = move;
@@ -162,8 +196,7 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(games[entryHash].player2Move != Action.Null, 'Cannot unlock before player 2 has played.');
-        require(games[entryHash].gameDeadline != 0, 'This game has been completed.');
+        require(getStatus(entryHash) == Status.WaitingForUnlock, 'Not expecting player 1 to unlock.');
         require(move != Action.Null, 'Ineligible move.');
         require(hashIt(code, move) == entryHash, 'Unverified move.');
 
@@ -195,7 +228,7 @@ contract RockPaperScissors is Ownable, Killable {
             emit LogDrawGame(entryHash, p1Sender, p2Sender, betSize);
         }
 
-        // Game complete. Attributes defined as player2Move != 0, gameDeadline = 0 for this state.
+        // Game complete. Keep player2Move != 0 to differentiate from NotInPlay state.
         games[entryHash].player1Sender = address(0);
         games[entryHash].player2Sender = address(0);
         games[entryHash].bet = 0;
@@ -207,8 +240,7 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(msg.sender == games[entryHash].player1Sender, 'Only player 1 is allowed to call this function.');
-        require(games[entryHash].player2Sender == address(0), 'Opponent exists.');
+        require(getStatusWithPlayer1Restriction(entryHash) == Status.WaitingForJoin, "Not allowed in game's current state.");
         require(now > games[entryHash].gameDeadline, 'Join period not expired.');
 
         balances[msg.sender] = balances[msg.sender].add(games[entryHash].bet);
@@ -221,9 +253,7 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(msg.sender == games[entryHash].player1Sender, 'Only player 1 is allowed to call this function.');
-        require(games[entryHash].player2Sender != address(0), 'No opponent. Use "cancelNoJoin" to cancel.');
-        require(games[entryHash].player2Move == Action.Null, 'Not allowed. Please unlock your move.');
+        require(getStatusWithPlayer1Restriction(entryHash) == Status.WaitingForPlay, "Not allowed in game's current state.");
         require(now > games[entryHash].gameDeadline, 'Play period not expired.');
 
         balances[msg.sender] = balances[msg.sender].add(games[entryHash].bet.mul(2));
@@ -236,9 +266,7 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(msg.sender == games[entryHash].player2Sender, 'Only player 2 is allowed to call this function.');
-        require(games[entryHash].player2Move != Action.Null, 'Player 2 has not submitted thier move yet.');
-        require(games[entryHash].gameDeadline != 0, 'This game has been completed.');
+        require(getStatusWithPlayer2Restriction(entryHash) == Status.WaitingForUnlock, "Not allowed in game's current state.");
         require(now > games[entryHash].gameDeadline, 'Unlock period not expired.');
 
         balances[msg.sender] = balances[msg.sender].add(games[entryHash].bet.mul(2));
@@ -247,8 +275,7 @@ contract RockPaperScissors is Ownable, Killable {
     }
 
     function resetCancelledGame(bytes32 entryHash)
-        // internal
-        public
+        internal
         whenNotPaused
         whenAlive
     {
