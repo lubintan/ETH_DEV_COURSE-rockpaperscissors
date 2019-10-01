@@ -76,38 +76,6 @@ contract RockPaperScissors is Ownable, Killable {
         }
     }
 
-    // The below function does the same thing as 'getStatus' plus verifies player1Sender, re-written to optimize gas savings.
-    function getStatusWithPlayer1Restriction(bytes32 entryHash)
-        internal
-        view
-        returns (Status)
-    {
-        require(games[entryHash].player1Sender == msg.sender, 'Only player 1 allowed to call this function.');
-        require(msg.sender != address(0), 'Address 0 not allowed.');
-
-        Action player2Move = games[entryHash].player2Move;
-
-        if (games[entryHash].player2Sender != address(0)) {
-            if (player2Move == Action.Null) return Status.WaitingForPlay;
-            else return Status.WaitingForUnlock;
-        } else {
-            if (player2Move == Action.Null) return Status.WaitingForJoin;
-            else return Status.Complete;
-        }
-    }
-
-    // The below function does the same thing as 'getStatus' plus verifies player2Sender, re-written to optimize gas savings.
-    function getStatusWithPlayer2Restriction(bytes32 entryHash)
-        internal
-        view
-        returns (Status)
-    {
-        require(games[entryHash].player2Sender == msg.sender, 'Only player 2 allowed to call this function.');
-        require(msg.sender != address(0), 'Address 0 not allowed.');
-
-        return games[entryHash].player2Move == Action.Null ? Status.WaitingForPlay : Status.WaitingForUnlock;
-    }
-
     function withdraw(uint256 withdrawAmount)
         public
         whenNotPaused
@@ -136,7 +104,7 @@ contract RockPaperScissors is Ownable, Killable {
         whenAlive
         returns (uint256)
     {
-        require(getStatus(entryHash) == Status.NotInPlay, 'Game already in progress or entryHash used before.');
+        require(games[entryHash].player1Sender == address(0), 'Game already in progress or entryHash used before.');
 
         /* The null condition for players 1 and 2 in this contract is address(0).
         In other words,address(0) is taken to be the case where there is no player.
@@ -157,7 +125,8 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(getStatus(entryHash) == Status.WaitingForJoin, 'Not expecting player 2 to join.');
+        require(games[entryHash].player2Sender == address(0), 'Player 2 already joined.');
+        require(games[entryHash].gameDeadline != 0, 'Game is in inactive state.');
         require(msg.sender != address(0), 'Address 0 not allowed.');
 
         balances[msg.sender] = balances[msg.sender].add(msg.value).sub(games[entryHash].bet);
@@ -172,8 +141,10 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(getStatusWithPlayer2Restriction(entryHash) == Status.WaitingForPlay, 'Not expecting player 2 to play.');
+        require(games[entryHash].player2Move == Action.Null, 'Player 2 already played move.');  
+        require(games[entryHash].player2Sender == msg.sender, 'Only player 2 can play.');
         require(move != Action.Null, 'Ineligible move.');
+        require(msg.sender != address(0), 'Address 0x0 not allowed to participate.');
 
         games[entryHash].player2Move = move;
         games[entryHash].gameDeadline = now.add(unlockPeriod);
@@ -186,9 +157,12 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(getStatusWithPlayer1Restriction(entryHash) == Status.WaitingForUnlock, 'Not expecting player 1 to unlock.');
+        require(games[entryHash].player1Sender == msg.sender, 'Only player 1 allowed to call this function.');
+        require(games[entryHash].player2Move != Action.Null, 'Please wait for player 2 to play their move.'); 
+        require(games[entryHash].player2Sender != address(0), 'No opponent.');
         require(move != Action.Null, 'Ineligible move.');
         require(hashIt(code, move) == entryHash, 'Unverified move.');
+        require(msg.sender != address(0), 'Address 0x0 not allowed to participate.');
 
         emit LogUnlock(entryHash, msg.sender, move);
         evaluate(entryHash, move);
@@ -229,7 +203,9 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(getStatusWithPlayer1Restriction(entryHash) == Status.WaitingForJoin, "Not allowed in game's current state.");
+        require(games[entryHash].player1Sender == msg.sender, 'Only player 1 allowed to call this function.');
+        require(games[entryHash].player2Sender == address(0),  'Opponent  already joined.');
+        require(games[entryHash].gameDeadline != 0, "Game in inactive state.");
         require(now > games[entryHash].gameDeadline, 'Join period not expired.');
 
         balances[msg.sender] = balances[msg.sender].add(games[entryHash].bet);
@@ -242,7 +218,9 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(getStatusWithPlayer1Restriction(entryHash) == Status.WaitingForPlay, "Not allowed in game's current state.");
+        require(games[entryHash].player1Sender == msg.sender, 'Only player 1 allowed to call this function.');
+        require(games[entryHash].player2Move == Action.Null, 'Player 2 already played move.');
+        require(games[entryHash].player2Sender != address(0), 'Player 2 does not exist.');
         require(now > games[entryHash].gameDeadline, 'Play period not expired.');
 
         balances[msg.sender] = balances[msg.sender].add(games[entryHash].bet.mul(2));
@@ -255,7 +233,8 @@ contract RockPaperScissors is Ownable, Killable {
         whenNotPaused
         whenAlive
     {
-        require(getStatusWithPlayer2Restriction(entryHash) == Status.WaitingForUnlock, "Not allowed in game's current state.");
+        require(games[entryHash].player2Move != Action.Null, 'You have not played your move.');
+        require(games[entryHash].player2Sender == msg.sender, 'Only player 2 allowed to call this function.');
         require(now > games[entryHash].gameDeadline, 'Unlock period not expired.');
 
         balances[msg.sender] = balances[msg.sender].add(games[entryHash].bet.mul(2));
